@@ -1357,13 +1357,29 @@ const PST = {
   ]
 };
 
+function getBotThinkDelayMs(level) {
+  const minDelay = 500 + level * 200; // Lvl 1: 700ms, Lvl 3: 1100ms, Lvl 10: 2500ms
+  const jitter = 400 + level * 140;   // Lvl 1: +0..540ms, Lvl 10: +0..1800ms
+  let delayMs = minDelay + Math.floor(Math.random() * jitter);
+
+  // Speed up under low-clock time pressure so the bot doesn't flag itself
+  if (!state.unlimitedTime) {
+    const botColor = state.myColor === 'w' ? 'b' : 'w';
+    const remainingMs = state.clocks[botColor];
+    if (remainingMs < 20000) {
+      delayMs = Math.min(delayMs, Math.max(250, Math.floor(remainingMs * 0.25)));
+    }
+  }
+  return delayMs;
+}
+
 function scheduleBotMove() {
   const sessionId = state.botSessionId;
   state.botThinking = true;
   updateStatusCard();
 
   const bot = getActiveBotInfo();
-  const delayMs = 320 + Math.floor(Math.random() * 280);
+  const delayMs = getBotThinkDelayMs(bot.level);
 
   setTimeout(() => {
     if (sessionId !== state.botSessionId || !state.gameActive || state.chess.game_over()) {
