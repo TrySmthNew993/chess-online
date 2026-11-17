@@ -84,15 +84,55 @@ class SoundFX {
 
 const sfx = new SoundFX();
 
+const BOT_PROFILES = {
+  vasya: {
+    id: 'vasya',
+    name: 'Vasya',
+    level: 1,
+    avatarImg: 'assets/vasya.jpg'
+  },
+  mitya: {
+    id: 'mitya',
+    name: 'Mitya',
+    level: 3,
+    avatarImg: 'assets/mitya.jpg'
+  },
+  custom: {
+    id: 'custom',
+    name: 'Custom Bot',
+    level: 5,
+    avatarEmoji: '🤖'
+  }
+};
+
+const BOT_DIFFICULTY_NAMES = {
+  1: 'Beginner',
+  2: 'Novice',
+  3: 'Casual',
+  4: 'Amateur',
+  5: 'Intermediate',
+  6: 'Club',
+  7: 'Strong',
+  8: 'Advanced',
+  9: 'Expert',
+  10: 'Master'
+};
+
 // Main Application State
 const state = {
   chess: new Chess(),
-  mode: 'local', // 'local' | 'online-host' | 'online-join'
+  mode: 'local', // 'local' | 'online-host' | 'online-join' | 'bot'
   setupTab: 'online-host',
-  myColor: 'w', // 'w' | 'b' (in online mode)
+  myColor: 'w', // 'w' | 'b' (in online & bot modes)
   hostColorPref: 'w', // 'w' | 'b' | 'random'
   flipped: false,
   autoFlipLocal: false,
+
+  // Bot mode state
+  botType: 'vasya', // 'vasya' | 'mitya' | 'custom'
+  customBotLevel: 5,
+  botThinking: false,
+  botSessionId: 0,
 
   // Selection & legal moves
   selectedSquare: null,
@@ -184,6 +224,12 @@ const els = {
   colorBtns: document.querySelectorAll('.color-btn'),
   localOptionsSection: document.getElementById('localOptionsSection'),
   autoFlipCheckbox: document.getElementById('autoFlipCheckbox'),
+  botSelectSection: document.getElementById('botSelectSection'),
+  botCards: document.querySelectorAll('.bot-card'),
+  customBotDifficultyRow: document.getElementById('customBotDifficultyRow'),
+  botLevelSlider: document.getElementById('botLevelSlider'),
+  botLevelLabel: document.getElementById('botLevelLabel'),
+  customBotCardLvl: document.getElementById('customBotCardLvl'),
   setupErrorMsg: document.getElementById('setupErrorMsg'),
   startActionBtn: document.getElementById('startActionBtn')
 };
@@ -269,6 +315,24 @@ function bindEvents() {
     });
   });
 
+  // Bot cards
+  els.botCards.forEach((card) => {
+    card.addEventListener('click', () => {
+      els.botCards.forEach((c) => c.classList.remove('active'));
+      card.classList.add('active');
+      state.botType = card.dataset.bot;
+      els.customBotDifficultyRow.classList.toggle('hidden', state.botType !== 'custom');
+    });
+  });
+
+  // Custom bot level slider
+  els.botLevelSlider.addEventListener('input', () => {
+    const lvl = parseInt(els.botLevelSlider.value, 10);
+    state.customBotLevel = lvl;
+    els.botLevelLabel.textContent = `Level ${lvl} / 10 — ${BOT_DIFFICULTY_NAMES[lvl]}`;
+    els.customBotCardLvl.textContent = `Level ${lvl} / 10`;
+  });
+
   // Start action button
   els.startActionBtn.addEventListener('click', handleStartAction);
 
@@ -296,7 +360,7 @@ function bindEvents() {
   // Game actions
   els.resignBtn.addEventListener('click', () => {
     if (!state.gameActive) return;
-    const resigningColor = isOnlineMode() ? state.myColor : state.chess.turn();
+    const resigningColor = isOnlineMode() || isBotMode() ? state.myColor : state.chess.turn();
     const winner = resigningColor === 'w' ? 'Black' : 'White';
     endGame('Resignation', `${winner} wins by resignation`, '🏳️');
     sendPeerData({ type: 'resign', color: resigningColor });
@@ -338,6 +402,16 @@ function bindEvents() {
         minutes: state.timeMinutes,
         increment: state.timeIncrement
       });
+    } else if (isBotMode()) {
+      const newMyColor = state.myColor === 'w' ? 'b' : 'w';
+      startNewBoardSession({
+        myColor: newMyColor,
+        minutes: state.timeMinutes,
+        increment: state.timeIncrement
+      });
+      if (state.chess.turn() !== state.myColor) {
+        scheduleBotMove();
+      }
     } else {
       startNewBoardSession({
         myColor: 'w',
@@ -369,21 +443,31 @@ function switchSetupTab(tabMode) {
   els.setupErrorMsg.classList.add('hidden');
 
   if (tabMode === 'online-host') {
+    els.botSelectSection.classList.add('hidden');
     els.joinRoomSection.classList.add('hidden');
     els.gameSettingsSection.classList.remove('hidden');
     els.colorSelectSection.classList.remove('hidden');
     els.localOptionsSection.classList.add('hidden');
     els.startActionBtn.textContent = 'Create Room & Get Link';
   } else if (tabMode === 'online-join') {
+    els.botSelectSection.classList.add('hidden');
     els.joinRoomSection.classList.remove('hidden');
     els.gameSettingsSection.classList.add('hidden');
     els.startActionBtn.textContent = 'Join Friend’s Room';
   } else if (tabMode === 'local') {
+    els.botSelectSection.classList.add('hidden');
     els.joinRoomSection.classList.add('hidden');
     els.gameSettingsSection.classList.remove('hidden');
     els.colorSelectSection.classList.add('hidden');
     els.localOptionsSection.classList.remove('hidden');
     els.startActionBtn.textContent = 'Start Local Game';
+  } else if (tabMode === 'bot') {
+    els.botSelectSection.classList.remove('hidden');
+    els.joinRoomSection.classList.add('hidden');
+    els.gameSettingsSection.classList.remove('hidden');
+    els.colorSelectSection.classList.remove('hidden');
+    els.localOptionsSection.classList.add('hidden');
+    els.startActionBtn.textContent = 'Start Game vs Bot';
   }
 }
 
@@ -413,6 +497,24 @@ function handleStartAction() {
       minutes: state.timeMinutes,
       increment: state.timeIncrement
     });
+  } else if (state.setupTab === 'bot') {
+    cleanupPeer();
+    state.mode = 'bot';
+    let playerColor = state.hostColorPref;
+    if (playerColor === 'random') {
+      playerColor = Math.random() < 0.5 ? 'w' : 'b';
+    }
+    els.roomBanner.classList.add('hidden');
+    els.connectionPill.classList.add('hidden');
+    els.setupModal.classList.add('hidden');
+    startNewBoardSession({
+      myColor: playerColor,
+      minutes: state.timeMinutes,
+      increment: state.timeIncrement
+    });
+    if (state.chess.turn() !== state.myColor) {
+      scheduleBotMove();
+    }
   } else if (state.setupTab === 'online-host') {
     initHostRoom();
   } else if (state.setupTab === 'online-join') {
@@ -659,11 +761,23 @@ function isOnlineMode() {
   return state.mode === 'online-host' || state.mode === 'online-join';
 }
 
+function isBotMode() {
+  return state.mode === 'bot';
+}
+
+function getActiveBotInfo() {
+  const base = BOT_PROFILES[state.botType] || BOT_PROFILES.vasya;
+  const level = state.botType === 'custom' ? state.customBotLevel : base.level;
+  return { ...base, level };
+}
+
 // ==========================================
 // Game Session & Clocks
 // ==========================================
 function startNewBoardSession({ myColor = 'w', minutes = 10, increment = 0, waitingForPeer = false }) {
   stopClock();
+  state.botSessionId++;
+  state.botThinking = false;
   state.chess.reset();
   state.myColor = myColor;
   state.flipped = myColor === 'b';
@@ -840,6 +954,9 @@ function canPlayerMoveNow() {
   if (isOnlineMode()) {
     return state.connected && state.chess.turn() === state.myColor;
   }
+  if (isBotMode()) {
+    return !state.botThinking && state.chess.turn() === state.myColor;
+  }
   return true;
 }
 
@@ -860,7 +977,7 @@ function handleSquareClick(sqName) {
 
   // Otherwise check if user clicked one of their own pieces
   const piece = state.chess.get(sqName);
-  const allowedColor = isOnlineMode() ? state.myColor : state.chess.turn();
+  const allowedColor = isOnlineMode() || isBotMode() ? state.myColor : state.chess.turn();
 
   if (piece && piece.color === allowedColor && piece.color === state.chess.turn()) {
     if (state.selectedSquare === sqName) {
@@ -948,6 +1065,10 @@ function applyMoveOnBoard(from, to, promotion = 'q', isLocalAction = true) {
   renderBoard();
   updateUI();
   checkGameOverConditions();
+
+  if (isBotMode() && state.gameActive && !state.chess.game_over() && state.chess.turn() !== state.myColor) {
+    scheduleBotMove();
+  }
 }
 
 function checkGameOverConditions() {
@@ -969,6 +1090,8 @@ function checkGameOverConditions() {
 
 function endGame(title, subtitle, icon = '🏆') {
   state.gameActive = false;
+  state.botThinking = false;
+  state.botSessionId++;
   state.gameOverReason = subtitle;
   stopClock();
 
@@ -989,8 +1112,21 @@ function updateUI() {
   updateMoveHistory();
   renderClocks();
 
-  els.offerDrawBtn.disabled = !state.gameActive;
+  els.offerDrawBtn.disabled = !state.gameActive || isBotMode();
   els.resignBtn.disabled = !state.gameActive;
+}
+
+function setPlayerAvatar(el, color) {
+  if (isBotMode() && color !== state.myColor) {
+    const bot = getActiveBotInfo();
+    if (bot.avatarImg) {
+      el.innerHTML = `<img src="${bot.avatarImg}" alt="${bot.name}" />`;
+    } else {
+      el.textContent = bot.avatarEmoji || '🤖';
+    }
+    return;
+  }
+  el.textContent = color === 'w' ? '♔' : '♚';
 }
 
 function updatePlayerBars() {
@@ -1002,13 +1138,20 @@ function updatePlayerBars() {
       topColor === state.myColor ? `You (${colorName(topColor)})` : `Friend (${colorName(topColor)})`;
     els.bottomPlayerName.textContent =
       bottomColor === state.myColor ? `You (${colorName(bottomColor)})` : `Friend (${colorName(bottomColor)})`;
+  } else if (isBotMode()) {
+    const bot = getActiveBotInfo();
+    const botLabel = `${bot.name} (Lvl ${bot.level})`;
+    els.topPlayerName.textContent =
+      topColor === state.myColor ? `You (${colorName(topColor)})` : botLabel;
+    els.bottomPlayerName.textContent =
+      bottomColor === state.myColor ? `You (${colorName(bottomColor)})` : botLabel;
   } else {
     els.topPlayerName.textContent = `${colorName(topColor)} Player`;
     els.bottomPlayerName.textContent = `${colorName(bottomColor)} Player`;
   }
 
-  els.topAvatar.textContent = topColor === 'w' ? '♔' : '♚';
-  els.bottomAvatar.textContent = bottomColor === 'w' ? '♔' : '♚';
+  setPlayerAvatar(els.topAvatar, topColor);
+  setPlayerAvatar(els.bottomAvatar, bottomColor);
 
   // Calculate captured pieces & material advantage
   const { capturedByWhite, capturedByBlack, whiteAdv } = computeMaterialAndCaptures();
@@ -1092,12 +1235,25 @@ function updateStatusCard() {
         turn === state.myColor
           ? `Your turn (${colorName(turn)})${checkSuffix}`
           : `Friend's turn (${colorName(turn)})${checkSuffix}`;
+    } else if (isBotMode()) {
+      const bot = getActiveBotInfo();
+      els.statusText.textContent =
+        turn === state.myColor
+          ? `Your turn (${colorName(turn)})${checkSuffix}`
+          : `${bot.name} is thinking...`;
     } else {
       els.statusText.textContent = `${colorName(turn)} to move${checkSuffix}`;
     }
   }
 
-  els.modeTag.textContent = isOnlineMode() ? '🌐 Online P2P' : '📱 Local Pass & Play';
+  if (isOnlineMode()) {
+    els.modeTag.textContent = '🌐 Online P2P';
+  } else if (isBotMode()) {
+    const bot = getActiveBotInfo();
+    els.modeTag.textContent = `🤖 vs ${bot.name} (Lvl ${bot.level})`;
+  } else {
+    els.modeTag.textContent = '📱 Local Pass & Play';
+  }
   els.timerTag.textContent = state.unlimitedTime
     ? '∞ Unlimited'
     : `⏱️ ${state.timeMinutes}+${state.timeIncrement}`;
@@ -1130,6 +1286,286 @@ function updateMoveHistory() {
 
 function colorName(c) {
   return c === 'w' ? 'White' : 'Black';
+}
+
+// ==========================================
+// Chess Bot Engine (Levels 1 - 10)
+// ==========================================
+const AI_PIECE_VALUES = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
+
+// Piece-square tables from White's perspective (row 0 = rank 8, row 7 = rank 1)
+const PST = {
+  p: [
+    [0,  0,  0,  0,  0,  0,  0,  0],
+    [50, 50, 50, 50, 50, 50, 50, 50],
+    [10, 10, 20, 30, 30, 20, 10, 10],
+    [5,  5, 10, 27, 27, 10,  5,  5],
+    [0,  0,  0, 22, 22,  0,  0,  0],
+    [5, -5,-10,  0,  0,-10, -5,  5],
+    [5, 10, 10,-22,-22, 10, 10,  5],
+    [0,  0,  0,  0,  0,  0,  0,  0]
+  ],
+  n: [
+    [-50,-40,-30,-30,-30,-30,-40,-50],
+    [-40,-20,  0,  0,  0,  0,-20,-40],
+    [-30,  0, 10, 15, 15, 10,  0,-30],
+    [-30,  5, 15, 20, 20, 15,  5,-30],
+    [-30,  0, 15, 20, 20, 15,  0,-30],
+    [-30,  5, 10, 15, 15, 10,  5,-30],
+    [-40,-20,  0,  5,  5,  0,-20,-40],
+    [-50,-40,-30,-30,-30,-30,-40,-50]
+  ],
+  b: [
+    [-20,-10,-10,-10,-10,-10,-10,-20],
+    [-10,  0,  0,  0,  0,  0,  0,-10],
+    [-10,  0,  5, 10, 10,  5,  0,-10],
+    [-10,  5,  5, 10, 10,  5,  5,-10],
+    [-10,  0, 10, 10, 10, 10,  0,-10],
+    [-10, 10, 10, 10, 10, 10, 10,-10],
+    [-10,  5,  0,  0,  0,  0,  5,-10],
+    [-20,-10,-10,-10,-10,-10,-10,-20]
+  ],
+  r: [
+    [0,  0,  0,  0,  0,  0,  0,  0],
+    [5, 10, 10, 10, 10, 10, 10,  5],
+    [-5, 0,  0,  0,  0,  0,  0, -5],
+    [-5, 0,  0,  0,  0,  0,  0, -5],
+    [-5, 0,  0,  0,  0,  0,  0, -5],
+    [-5, 0,  0,  0,  0,  0,  0, -5],
+    [-5, 0,  0,  0,  0,  0,  0, -5],
+    [0,  0,  0,  5,  5,  0,  0,  0]
+  ],
+  q: [
+    [-20,-10,-10, -5, -5,-10,-10,-20],
+    [-10,  0,  0,  0,  0,  0,  0,-10],
+    [-10,  0,  5,  5,  5,  5,  0,-10],
+    [-5,   0,  5,  5,  5,  5,  0, -5],
+    [0,    0,  5,  5,  5,  5,  0, -5],
+    [-10,  5,  5,  5,  5,  5,  0,-10],
+    [-10,  0,  5,  0,  0,  0,  0,-10],
+    [-20,-10,-10, -5, -5,-10,-10,-20]
+  ],
+  k: [
+    [-30,-40,-40,-50,-50,-40,-40,-30],
+    [-30,-40,-40,-50,-50,-40,-40,-30],
+    [-30,-40,-40,-50,-50,-40,-40,-30],
+    [-30,-40,-40,-50,-50,-40,-40,-30],
+    [-20,-30,-30,-40,-40,-30,-30,-20],
+    [-10,-20,-20,-20,-20,-20,-20,-10],
+    [20,  20,  0,  0,  0,  0, 20, 20],
+    [20,  30, 10,  0,  0, 10, 30, 20]
+  ]
+};
+
+function scheduleBotMove() {
+  const sessionId = state.botSessionId;
+  state.botThinking = true;
+  updateStatusCard();
+
+  const bot = getActiveBotInfo();
+  const delayMs = 320 + Math.floor(Math.random() * 280);
+
+  setTimeout(() => {
+    if (sessionId !== state.botSessionId || !state.gameActive || state.chess.game_over()) {
+      state.botThinking = false;
+      return;
+    }
+
+    const chosenMove = computeBotMove(state.chess, bot.level);
+    state.botThinking = false;
+
+    if (chosenMove && sessionId === state.botSessionId && state.gameActive) {
+      applyMoveOnBoard(chosenMove.from, chosenMove.to, chosenMove.promotion || 'q', false);
+    }
+  }, delayMs);
+}
+
+function evaluateBoardForSide(chess, perspectiveColor) {
+  if (chess.in_checkmate()) {
+    return chess.turn() === perspectiveColor ? -99999 : 99999;
+  }
+  if (chess.in_draw() || chess.in_stalemate() || chess.in_threefold_repetition() || chess.insufficient_material()) {
+    return 0;
+  }
+
+  const board = chess.board();
+  let score = 0;
+
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const piece = board[r][c];
+      if (!piece) continue;
+      const pstRow = piece.color === 'w' ? r : 7 - r;
+      const val = AI_PIECE_VALUES[piece.type] + PST[piece.type][pstRow][c];
+      score += piece.color === perspectiveColor ? val : -val;
+    }
+  }
+  return score;
+}
+
+function orderMoves(moves) {
+  return moves.sort((a, b) => {
+    let scoreA = 0;
+    let scoreB = 0;
+    if (a.captured) scoreA += AI_PIECE_VALUES[a.captured] * 10 - AI_PIECE_VALUES[a.piece];
+    if (b.captured) scoreB += AI_PIECE_VALUES[b.captured] * 10 - AI_PIECE_VALUES[b.piece];
+    if (a.promotion) scoreA += AI_PIECE_VALUES[a.promotion];
+    if (b.promotion) scoreB += AI_PIECE_VALUES[b.promotion];
+    if (a.san && a.san.includes('+')) scoreA += 45;
+    if (b.san && b.san.includes('+')) scoreB += 45;
+    return scoreB - scoreA;
+  });
+}
+
+function quiescence(chess, alpha, beta, maximizing, perspectiveColor, qDepth, deadline) {
+  const standPat = evaluateBoardForSide(chess, perspectiveColor);
+  if (qDepth <= 0 || performance.now() > deadline) return standPat;
+
+  if (maximizing) {
+    if (standPat >= beta) return beta;
+    if (alpha < standPat) alpha = standPat;
+
+    const captures = orderMoves(chess.moves({ verbose: true }).filter((m) => m.captured || m.promotion));
+    for (let i = 0; i < captures.length; i++) {
+      chess.move(captures[i]);
+      const score = quiescence(chess, alpha, beta, false, perspectiveColor, qDepth - 1, deadline);
+      chess.undo();
+      if (score >= beta) return beta;
+      if (score > alpha) alpha = score;
+    }
+    return alpha;
+  } else {
+    if (standPat <= alpha) return alpha;
+    if (beta > standPat) beta = standPat;
+
+    const captures = orderMoves(chess.moves({ verbose: true }).filter((m) => m.captured || m.promotion));
+    for (let i = 0; i < captures.length; i++) {
+      chess.move(captures[i]);
+      const score = quiescence(chess, alpha, beta, true, perspectiveColor, qDepth - 1, deadline);
+      chess.undo();
+      if (score <= alpha) return alpha;
+      if (score < beta) beta = score;
+    }
+    return beta;
+  }
+}
+
+function minimax(chess, depth, alpha, beta, maximizing, perspectiveColor, useQuiescence, deadline) {
+  if (chess.game_over() || depth === 0 || performance.now() > deadline) {
+    if (useQuiescence && !chess.game_over() && performance.now() <= deadline) {
+      return quiescence(chess, alpha, beta, maximizing, perspectiveColor, 2, deadline);
+    }
+    return evaluateBoardForSide(chess, perspectiveColor);
+  }
+
+  const moves = orderMoves(chess.moves({ verbose: true }));
+  if (moves.length === 0) {
+    return evaluateBoardForSide(chess, perspectiveColor);
+  }
+
+  if (maximizing) {
+    let maxEval = -Infinity;
+    for (let i = 0; i < moves.length; i++) {
+      chess.move(moves[i]);
+      const ev = minimax(chess, depth - 1, alpha, beta, false, perspectiveColor, useQuiescence, deadline);
+      chess.undo();
+      if (ev > maxEval) maxEval = ev;
+      if (ev > alpha) alpha = ev;
+      if (beta <= alpha) break;
+    }
+    return maxEval;
+  } else {
+    let minEval = Infinity;
+    for (let i = 0; i < moves.length; i++) {
+      chess.move(moves[i]);
+      const ev = minimax(chess, depth - 1, alpha, beta, true, perspectiveColor, useQuiescence, deadline);
+      chess.undo();
+      if (ev < minEval) minEval = ev;
+      if (ev < beta) beta = ev;
+      if (beta <= alpha) break;
+    }
+    return minEval;
+  }
+}
+
+function computeBotMove(liveChess, level) {
+  const chess = new Chess(liveChess.fen());
+  const legalMoves = chess.moves({ verbose: true });
+  if (legalMoves.length === 0) return null;
+
+  // Level 1 (Vasya): Easiest — mostly random, takes an obvious capture only ~20% of the time
+  if (level <= 1) {
+    const captures = legalMoves.filter((m) => m.captured);
+    if (captures.length > 0 && Math.random() < 0.2) {
+      return captures[Math.floor(Math.random() * captures.length)];
+    }
+    return legalMoves[Math.floor(Math.random() * legalMoves.length)];
+  }
+
+  const botColor = chess.turn();
+  const pieceCount = chess.board().flat().filter(Boolean).length;
+
+  // Map difficulty 2..10 to search depth, noise (centipawns), and quiescence
+  let depth = 1;
+  let noise = 0;
+  let useQuiescence = false;
+
+  if (level === 2) {
+    depth = 1;
+    noise = 260;
+  } else if (level === 3) {
+    // Mitya (3/10)
+    depth = 1;
+    noise = 135;
+  } else if (level === 4) {
+    depth = 2;
+    noise = 85;
+  } else if (level === 5) {
+    depth = 2;
+    noise = 35;
+  } else if (level === 6) {
+    depth = 2;
+    noise = 12;
+    useQuiescence = true;
+  } else if (level === 7) {
+    depth = 3;
+    noise = 20;
+  } else if (level === 8) {
+    depth = 3;
+    noise = 0;
+    useQuiescence = true;
+  } else if (level === 9) {
+    depth = pieceCount <= 14 ? 4 : 3;
+    noise = 0;
+    useQuiescence = true;
+  } else {
+    depth = pieceCount <= 20 ? 4 : 3;
+    noise = 0;
+    useQuiescence = true;
+  }
+
+  const deadline = performance.now() + 850;
+  const ordered = orderMoves(legalMoves);
+  const scoredMoves = [];
+
+  for (let i = 0; i < ordered.length; i++) {
+    const move = ordered[i];
+    chess.move(move);
+    let score = minimax(chess, depth - 1, -Infinity, Infinity, false, botColor, useQuiescence, deadline);
+    chess.undo();
+
+    if (noise > 0) {
+      score += (Math.random() * 2 - 1) * noise;
+    } else {
+      // Tiny tie-breaker so identical-eval openings vary naturally
+      score += Math.random() * 4;
+    }
+
+    scoredMoves.push({ move, score });
+  }
+
+  scoredMoves.sort((a, b) => b.score - a.score);
+  return scoredMoves[0].move;
 }
 
 // Boot the app

@@ -178,18 +178,65 @@
       <!-- Mode Tabs -->
       <div class="mode-tabs" role="tablist">
         <button class="mode-tab active" data-mode="online-host" id="tabHost">
-          🌐 Create Online Room
+          🌐 Create Room
         </button>
         <button class="mode-tab" data-mode="online-join" id="tabJoin">
-          🔗 Join Friend's Room
+          🔗 Join Room
         </button>
         <button class="mode-tab" data-mode="local" id="tabLocal">
-          📱 Same Device (Local)
+          📱 Local
+        </button>
+        <button class="mode-tab" data-mode="bot" id="tabBot">
+          🤖 vs Bot
         </button>
       </div>
 
       <!-- Setup Body -->
       <div class="modal-body">
+        <!-- Bot Opponent Section (Only for bot mode) -->
+        <div id="botSelectSection" class="setup-section hidden">
+          <label class="section-label">Choose Bot Opponent</label>
+          <div class="bot-grid" id="botGrid">
+            <button type="button" class="bot-card active" data-bot="vasya">
+              <img src="assets/vasya.jpg" alt="Vasya" class="bot-avatar-img" />
+              <div class="bot-info">
+                <span class="bot-name">Vasya</span>
+                <span class="bot-lvl">Level 1 / 10</span>
+              </div>
+              <span class="bot-desc">Easiest</span>
+            </button>
+            <button type="button" class="bot-card" data-bot="mitya">
+              <img src="assets/mitya.jpg" alt="Mitya" class="bot-avatar-img" />
+              <div class="bot-info">
+                <span class="bot-name">Mitya</span>
+                <span class="bot-lvl">Level 3 / 10</span>
+              </div>
+              <span class="bot-desc">Casual</span>
+            </button>
+            <button type="button" class="bot-card" data-bot="custom">
+              <div class="bot-avatar-emoji">🤖</div>
+              <div class="bot-info">
+                <span class="bot-name">Custom Bot</span>
+                <span class="bot-lvl" id="customBotCardLvl">Level 5 / 10</span>
+              </div>
+              <span class="bot-desc">1 – 10</span>
+            </button>
+          </div>
+
+          <!-- Custom Bot Difficulty Slider -->
+          <div id="customBotDifficultyRow" class="custom-bot-row hidden">
+            <div class="custom-bot-header">
+              <label for="botLevelSlider">Bot Difficulty</label>
+              <span class="custom-bot-badge" id="botLevelLabel">Level 5 / 10 — Intermediate</span>
+            </div>
+            <input type="range" id="botLevelSlider" min="1" max="10" value="5" class="bot-slider" />
+            <div class="slider-ticks">
+              <span>1 (Beginner)</span>
+              <span>5</span>
+              <span>10 (Master)</span>
+            </div>
+          </div>
+        </div>
         <!-- Join Room Input (Only for online-join) -->
         <div id="joinRoomSection" class="setup-section hidden">
           <label class="section-label" for="joinCodeInput">Enter Friend's Room Code</label>
