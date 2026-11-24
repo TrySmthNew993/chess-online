@@ -822,88 +822,7 @@ html, body {
   border-radius: var(--radius-sm);
 }
 
-/* Bot Selector */
-.bot-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.bot-card {
-  background: var(--bg-elevated);
-  border: 1.5px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  padding: 10px 8px;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 6px;
-  color: var(--text-primary);
-  font-family: inherit;
-  transition: all 0.15s ease;
-}
-
-.bot-card:hover {
-  background: var(--bg-hover);
-}
-
-.bot-card.active {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-}
-
-.bot-avatar-img {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid rgba(255, 255, 255, 0.15);
-}
-
-.bot-card.active .bot-avatar-img {
-  border-color: var(--accent);
-}
-
-.bot-avatar-emoji {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: var(--bg-main);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.65rem;
-  border: 2px solid rgba(255, 255, 255, 0.15);
-}
-
-.bot-card.active .bot-avatar-emoji {
-  border-color: var(--accent);
-}
-
-.bot-info {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.bot-name {
-  font-weight: 700;
-  font-size: 0.88rem;
-}
-
-.bot-lvl {
-  font-size: 0.72rem;
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.bot-desc {
-  font-size: 0.68rem;
-  color: var(--text-secondary);
-}
-
+/* Bot ELO Selector */
 .custom-bot-row {
   background: var(--bg-main);
   border: 1px solid var(--border-color);
@@ -1170,16 +1089,5 @@ html, body {
 
   .mode-tabs {
     grid-template-columns: repeat(2, 1fr);
-  }
-
-  .bot-grid {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-  }
-
-  .bot-avatar-img,
-  .bot-avatar-emoji {
-    width: 42px;
-    height: 42px;
   }
 }

@@ -84,38 +84,24 @@ class SoundFX {
 
 const sfx = new SoundFX();
 
-const BOT_PROFILES = {
-  vasya: {
-    id: 'vasya',
-    name: 'Vasya',
-    level: 1,
-    avatarImg: 'assets/vasya.jpg'
-  },
-  mitya: {
-    id: 'mitya',
-    name: 'Mitya',
-    level: 3,
-    avatarImg: 'assets/mitya.jpg'
-  },
-  custom: {
-    id: 'custom',
-    name: 'Custom Bot',
-    level: 5,
-    avatarEmoji: '🤖'
-  }
-};
-
-const BOT_DIFFICULTY_NAMES = {
-  1: 'Beginner',
-  2: 'Novice',
-  3: 'Casual',
-  4: 'Amateur',
-  5: 'Intermediate',
-  6: 'Club',
-  7: 'Strong',
-  8: 'Advanced',
-  9: 'Expert',
-  10: 'Master'
+const BOT_ELO_TITLES = {
+  400: 'Complete Beginner',
+  500: 'Novice',
+  600: 'Casual Beginner',
+  700: 'Improving',
+  800: 'Casual Player',
+  900: 'Hobbyist',
+  1000: 'Amateur',
+  1100: 'Club Novice',
+  1200: 'Intermediate',
+  1300: 'Club Player',
+  1400: 'Solid Club',
+  1500: 'Strong Club',
+  1600: 'Advanced',
+  1700: 'Tournament',
+  1800: 'Expert',
+  1900: 'Candidate Master',
+  2000: 'Master'
 };
 
 // Main Application State
@@ -129,8 +115,7 @@ const state = {
   autoFlipLocal: false,
 
   // Bot mode state
-  botType: 'vasya', // 'vasya' | 'mitya' | 'custom'
-  customBotLevel: 5,
+  botElo: 1000,
   botThinking: false,
   botSessionId: 0,
 
@@ -225,11 +210,8 @@ const els = {
   localOptionsSection: document.getElementById('localOptionsSection'),
   autoFlipCheckbox: document.getElementById('autoFlipCheckbox'),
   botSelectSection: document.getElementById('botSelectSection'),
-  botCards: document.querySelectorAll('.bot-card'),
-  customBotDifficultyRow: document.getElementById('customBotDifficultyRow'),
-  botLevelSlider: document.getElementById('botLevelSlider'),
-  botLevelLabel: document.getElementById('botLevelLabel'),
-  customBotCardLvl: document.getElementById('customBotCardLvl'),
+  botEloSlider: document.getElementById('botEloSlider'),
+  botEloLabel: document.getElementById('botEloLabel'),
   setupErrorMsg: document.getElementById('setupErrorMsg'),
   startActionBtn: document.getElementById('startActionBtn')
 };
@@ -315,22 +297,12 @@ function bindEvents() {
     });
   });
 
-  // Bot cards
-  els.botCards.forEach((card) => {
-    card.addEventListener('click', () => {
-      els.botCards.forEach((c) => c.classList.remove('active'));
-      card.classList.add('active');
-      state.botType = card.dataset.bot;
-      els.customBotDifficultyRow.classList.toggle('hidden', state.botType !== 'custom');
-    });
-  });
-
-  // Custom bot level slider
-  els.botLevelSlider.addEventListener('input', () => {
-    const lvl = parseInt(els.botLevelSlider.value, 10);
-    state.customBotLevel = lvl;
-    els.botLevelLabel.textContent = `Level ${lvl} / 10 — ${BOT_DIFFICULTY_NAMES[lvl]}`;
-    els.customBotCardLvl.textContent = `Level ${lvl} / 10`;
+  // Custom bot ELO slider
+  els.botEloSlider.addEventListener('input', () => {
+    const elo = parseInt(els.botEloSlider.value, 10);
+    state.botElo = elo;
+    const title = BOT_ELO_TITLES[elo] || 'Custom';
+    els.botEloLabel.textContent = `${elo} ELO — ${title}`;
   });
 
   // Start action button
@@ -766,9 +738,12 @@ function isBotMode() {
 }
 
 function getActiveBotInfo() {
-  const base = BOT_PROFILES[state.botType] || BOT_PROFILES.vasya;
-  const level = state.botType === 'custom' ? state.customBotLevel : base.level;
-  return { ...base, level };
+  const elo = state.botElo;
+  return {
+    name: 'Bot',
+    elo,
+    title: BOT_ELO_TITLES[elo] || 'Custom'
+  };
 }
 
 // ==========================================
@@ -1117,15 +1092,6 @@ function updateUI() {
 }
 
 function setPlayerAvatar(el, color) {
-  if (isBotMode() && color !== state.myColor) {
-    const bot = getActiveBotInfo();
-    if (bot.avatarImg) {
-      el.innerHTML = `<img src="${bot.avatarImg}" alt="${bot.name}" />`;
-    } else {
-      el.textContent = bot.avatarEmoji || '🤖';
-    }
-    return;
-  }
   el.textContent = color === 'w' ? '♔' : '♚';
 }
 
@@ -1140,7 +1106,7 @@ function updatePlayerBars() {
       bottomColor === state.myColor ? `You (${colorName(bottomColor)})` : `Friend (${colorName(bottomColor)})`;
   } else if (isBotMode()) {
     const bot = getActiveBotInfo();
-    const botLabel = `${bot.name} (Lvl ${bot.level})`;
+    const botLabel = `Bot (${bot.elo} ELO)`;
     els.topPlayerName.textContent =
       topColor === state.myColor ? `You (${colorName(topColor)})` : botLabel;
     els.bottomPlayerName.textContent =
@@ -1240,7 +1206,7 @@ function updateStatusCard() {
       els.statusText.textContent =
         turn === state.myColor
           ? `Your turn (${colorName(turn)})${checkSuffix}`
-          : `${bot.name} is thinking...`;
+          : `Bot (${bot.elo} ELO) is thinking...`;
     } else {
       els.statusText.textContent = `${colorName(turn)} to move${checkSuffix}`;
     }
@@ -1250,7 +1216,7 @@ function updateStatusCard() {
     els.modeTag.textContent = '🌐 Online P2P';
   } else if (isBotMode()) {
     const bot = getActiveBotInfo();
-    els.modeTag.textContent = `🤖 vs ${bot.name} (Lvl ${bot.level})`;
+    els.modeTag.textContent = `🤖 vs Bot (${bot.elo} ELO)`;
   } else {
     els.modeTag.textContent = '📱 Local Pass & Play';
   }
@@ -1357,9 +1323,10 @@ const PST = {
   ]
 };
 
-function getBotThinkDelayMs(level) {
-  const minDelay = 500 + level * 200; // Lvl 1: 700ms, Lvl 3: 1100ms, Lvl 10: 2500ms
-  const jitter = 400 + level * 140;   // Lvl 1: +0..540ms, Lvl 10: +0..1800ms
+function getBotThinkDelayMs(elo) {
+  const t = Math.max(0, Math.min(1, (elo - 400) / 1600));
+  const minDelay = 650 + Math.round(t * 1850); // 400 ELO: 650ms, 1200 ELO: 1575ms, 2000 ELO: 2500ms
+  const jitter = 450 + Math.round(t * 1350);   // 400 ELO: +0..450ms, 2000 ELO: +0..1800ms
   let delayMs = minDelay + Math.floor(Math.random() * jitter);
 
   // Speed up under low-clock time pressure so the bot doesn't flag itself
@@ -1379,7 +1346,7 @@ function scheduleBotMove() {
   updateStatusCard();
 
   const bot = getActiveBotInfo();
-  const delayMs = getBotThinkDelayMs(bot.level);
+  const delayMs = getBotThinkDelayMs(bot.elo);
 
   setTimeout(() => {
     if (sessionId !== state.botSessionId || !state.gameActive || state.chess.game_over()) {
@@ -1387,7 +1354,7 @@ function scheduleBotMove() {
       return;
     }
 
-    const chosenMove = computeBotMove(state.chess, bot.level);
+    const chosenMove = computeBotMove(state.chess, bot.elo);
     state.botThinking = false;
 
     if (chosenMove && sessionId === state.botSessionId && state.gameActive) {
@@ -1504,15 +1471,15 @@ function minimax(chess, depth, alpha, beta, maximizing, perspectiveColor, useQui
   }
 }
 
-function computeBotMove(liveChess, level) {
+function computeBotMove(liveChess, elo) {
   const chess = new Chess(liveChess.fen());
   const legalMoves = chess.moves({ verbose: true });
   if (legalMoves.length === 0) return null;
 
-  // Level 1 (Vasya): Easiest — mostly random, takes an obvious capture only ~20% of the time
-  if (level <= 1) {
+  // 400 ELO: Complete beginner — mostly random, takes an obvious capture ~18% of the time
+  if (elo <= 400) {
     const captures = legalMoves.filter((m) => m.captured);
-    if (captures.length > 0 && Math.random() < 0.2) {
+    if (captures.length > 0 && Math.random() < 0.18) {
       return captures[Math.floor(Math.random() * captures.length)];
     }
     return legalMoves[Math.floor(Math.random() * legalMoves.length)];
@@ -1521,46 +1488,73 @@ function computeBotMove(liveChess, level) {
   const botColor = chess.turn();
   const pieceCount = chess.board().flat().filter(Boolean).length;
 
-  // Map difficulty 2..10 to search depth, noise (centipawns), and quiescence
+  // Map ELO (500..2000) to search depth, noise (centipawns), and quiescence
   let depth = 1;
   let noise = 0;
   let useQuiescence = false;
+  let timeBudgetMs = 850;
 
-  if (level === 2) {
+  if (elo <= 500) {
     depth = 1;
-    noise = 260;
-  } else if (level === 3) {
-    // Mitya (3/10)
+    noise = 360;
+  } else if (elo <= 600) {
+    depth = 1;
+    noise = 280;
+  } else if (elo <= 700) {
+    depth = 1;
+    noise = 200;
+  } else if (elo <= 800) {
     depth = 1;
     noise = 135;
-  } else if (level === 4) {
-    depth = 2;
+  } else if (elo <= 900) {
+    depth = 1;
     noise = 85;
-  } else if (level === 5) {
+  } else if (elo <= 1000) {
     depth = 2;
-    noise = 35;
-  } else if (level === 6) {
+    noise = 110;
+  } else if (elo <= 1100) {
     depth = 2;
+    noise = 70;
+  } else if (elo <= 1200) {
+    depth = 2;
+    noise = 40;
+  } else if (elo <= 1300) {
+    depth = 2;
+    noise = 18;
+    useQuiescence = true;
+  } else if (elo <= 1400) {
+    depth = 2;
+    noise = 0;
+    useQuiescence = true;
+  } else if (elo <= 1500) {
+    depth = 3;
+    noise = 30;
+  } else if (elo <= 1600) {
+    depth = 3;
     noise = 12;
     useQuiescence = true;
-  } else if (level === 7) {
-    depth = 3;
-    noise = 20;
-  } else if (level === 8) {
+  } else if (elo <= 1700) {
     depth = 3;
     noise = 0;
     useQuiescence = true;
-  } else if (level === 9) {
+  } else if (elo <= 1800) {
     depth = pieceCount <= 14 ? 4 : 3;
     noise = 0;
     useQuiescence = true;
-  } else {
-    depth = pieceCount <= 20 ? 4 : 3;
+  } else if (elo <= 1900) {
+    depth = pieceCount <= 18 ? 4 : 3;
     noise = 0;
     useQuiescence = true;
+    timeBudgetMs = 900;
+  } else {
+    // 2000 ELO
+    depth = pieceCount <= 22 ? 4 : 3;
+    noise = 0;
+    useQuiescence = true;
+    timeBudgetMs = 950;
   }
 
-  const deadline = performance.now() + 850;
+  const deadline = performance.now() + timeBudgetMs;
   const ordered = orderMoves(legalMoves);
   const scoredMoves = [];
 
