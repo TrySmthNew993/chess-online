@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="bg3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0369a1"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="60" fill="url(#bg3)"/>
+  <!-- Stars / rocket science motif -->
+  <circle cx="28" cy="34" r="2.2" fill="#bae6fd" opacity="0.8"/>
+  <circle cx="92" cy="30" r="2.5" fill="#bae6fd" opacity="0.8"/>
+  <circle cx="88" cy="72" r="1.8" fill="#bae6fd" opacity="0.6"/>
+  <!-- Portrait -->
+  <circle cx="60" cy="49" r="17" fill="#bae6fd"/>
+  <path d="M35 96 C35 76, 85 76, 85 96 Z" fill="#38bdf8"/>
+  <!-- Friendly eyes & big smile -->
+  <circle cx="53.5" cy="47" r="2.5" fill="#0f172a"/>
+  <circle cx="66.5" cy="47" r="2.5" fill="#0f172a"/>
+  <path d="M52 54 Q60 61 68 54" fill="none" stroke="#0f172a" stroke-width="2.4" stroke-linecap="round"/>
+  <!-- Mini rocket badge -->
+  <path d="M60 17 C65 23 65 29 60 32 C55 29 55 23 60 17 Z" fill="#facc15"/>
+</svg>

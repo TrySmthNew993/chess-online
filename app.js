@@ -84,42 +84,33 @@ class SoundFX {
 
 const sfx = new SoundFX();
 
-const BOT_PRESETS = {
-  peres: {
-    id: 'peres',
-    name: 'Перес',
-    elo: 300,
-    emoji: '🚀',
-    preQuote: 'Are you with me guys?',
-    winQuote: 'Easy peasy!',
-    loseQuote: 'This was a rocket science…'
-  },
+const NAMED_BOTS = {
   kvadromech: {
     id: 'kvadromech',
     name: 'Квадромеч',
     elo: 500,
-    emoji: '⚔️',
-    preQuote: 'Marat?',
-    winQuote: 'Eso es Revolución Francesa',
-    loseQuote: 'A estudiar.'
+    avatar: 'assets/bot-kvadromech.svg',
+    replicaBefore: 'Marat?',
+    replicaWon: 'Eso es Revolución Francesa',
+    replicaLost: 'A estudiar.'
   },
   kandaliha: {
     id: 'kandaliha',
     name: 'Кандалиха',
     elo: 900,
-    emoji: '📝',
-    preQuote: 'Exam…',
-    winQuote: 'Hoy es el dia de las notas, jajajaja',
-    loseQuote: 'Has usado el movil sin permiso'
+    avatar: 'assets/bot-kandaliha.svg',
+    replicaBefore: 'Exam…',
+    replicaWon: 'Hoy es el dia de las notas, jajajaja',
+    replicaLost: 'Has usado el movil sin permiso'
   },
-  custom: {
-    id: 'custom',
-    name: 'Custom Bot',
-    elo: 1200,
-    emoji: '🤖',
-    preQuote: null,
-    winQuote: null,
-    loseQuote: null
+  peres: {
+    id: 'peres',
+    name: 'Перес',
+    elo: 300,
+    avatar: 'assets/bot-peres.svg',
+    replicaBefore: 'Are you with me guys?',
+    replicaWon: 'Easy peasy!',
+    replicaLost: 'This was a rocket science…'
   }
 };
 
@@ -168,7 +159,7 @@ const state = {
   autoFlipLocal: false,
 
   // Bot mode state
-  botPreset: 'peres', // 'peres' | 'kvadromech' | 'kandaliha' | 'custom'
+  selectedBotId: 'kvadromech', // 'kvadromech' | 'kandaliha' | 'peres' | 'custom'
   botElo: 1200,
   botThinking: false,
   botSessionId: 0,
@@ -233,9 +224,14 @@ const els = {
   gameOverIcon: document.getElementById('gameOverIcon'),
   gameOverTitle: document.getElementById('gameOverTitle'),
   gameOverSubtitle: document.getElementById('gameOverSubtitle'),
-  gameOverQuote: document.getElementById('gameOverQuote'),
+  gameOverReplica: document.getElementById('gameOverReplica'),
   rematchBtn: document.getElementById('rematchBtn'),
   newSetupBtn: document.getElementById('newSetupBtn'),
+
+  botChatBubble: document.getElementById('botChatBubble'),
+  botChatAvatar: document.getElementById('botChatAvatar'),
+  botChatName: document.getElementById('botChatName'),
+  botChatQuote: document.getElementById('botChatQuote'),
 
   offerDrawBtn: document.getElementById('offerDrawBtn'),
   resignBtn: document.getElementById('resignBtn'),
@@ -265,15 +261,16 @@ const els = {
   localOptionsSection: document.getElementById('localOptionsSection'),
   autoFlipCheckbox: document.getElementById('autoFlipCheckbox'),
   botSelectSection: document.getElementById('botSelectSection'),
-  botPresetCards: document.querySelectorAll('.bot-preset-card'),
-  botPreGameQuote: document.getElementById('botPreGameQuote'),
-  botQuoteSpeaker: document.getElementById('botQuoteSpeaker'),
-  botQuoteText: document.getElementById('botQuoteText'),
-  customBotDifficultyRow: document.getElementById('customBotDifficultyRow'),
+  botCards: document.querySelectorAll('.bot-card'),
+  botProfilePreview: document.getElementById('botProfilePreview'),
+  previewBotImg: document.getElementById('previewBotImg'),
+  previewBotName: document.getElementById('previewBotName'),
+  previewBotElo: document.getElementById('previewBotElo'),
+  previewBotReplica: document.getElementById('previewBotReplica'),
+  customBotEloRow: document.getElementById('customBotEloRow'),
   customBotCardElo: document.getElementById('customBotCardElo'),
   botEloSlider: document.getElementById('botEloSlider'),
   botEloLabel: document.getElementById('botEloLabel'),
-  eloQuickPills: document.querySelectorAll('.elo-pill'),
   setupErrorMsg: document.getElementById('setupErrorMsg'),
   startActionBtn: document.getElementById('startActionBtn')
 };
@@ -283,6 +280,7 @@ const PEER_PREFIX = 'knightlink-chess-v1-';
 // Initialize App
 function init() {
   bindEvents();
+  selectBotProfile(state.selectedBotId);
   checkUrlRoomInvite();
   renderBoard();
   updateUI();
@@ -359,33 +357,20 @@ function bindEvents() {
     });
   });
 
-  // Bot preset cards
-  els.botPresetCards.forEach((card) => {
+  // Bot profile cards
+  els.botCards.forEach((card) => {
     card.addEventListener('click', () => {
-      els.botPresetCards.forEach((c) => c.classList.remove('active'));
-      card.classList.add('active');
-      state.botPreset = card.dataset.bot;
-      updateBotSetupUI();
+      selectBotProfile(card.dataset.bot);
     });
   });
 
-  // Custom bot ELO slider + quick pills
-  const setCustomBotElo = (eloVal) => {
-    const elo = Math.max(200, Math.min(3200, parseInt(eloVal, 10) || 1200));
+  // Custom bot ELO slider
+  els.botEloSlider.addEventListener('input', () => {
+    const elo = parseInt(els.botEloSlider.value, 10);
     state.botElo = elo;
-    els.botEloSlider.value = String(elo);
     const title = BOT_ELO_TITLES[elo] || 'Custom';
     els.botEloLabel.textContent = `${elo} ELO — ${title}`;
     els.customBotCardElo.textContent = `${elo} ELO`;
-    els.eloQuickPills.forEach((pill) => {
-      pill.classList.toggle('active', parseInt(pill.dataset.elo, 10) === elo);
-    });
-  };
-
-  els.botEloSlider.addEventListener('input', () => setCustomBotElo(els.botEloSlider.value));
-  els.botEloSlider.addEventListener('change', () => setCustomBotElo(els.botEloSlider.value));
-  els.eloQuickPills.forEach((pill) => {
-    pill.addEventListener('click', () => setCustomBotElo(pill.dataset.elo));
   });
 
   // Start action button
@@ -416,9 +401,9 @@ function bindEvents() {
   els.resignBtn.addEventListener('click', () => {
     if (!state.gameActive) return;
     const resigningColor = isOnlineMode() || isBotMode() ? state.myColor : state.chess.turn();
-    const winnerColor = resigningColor === 'w' ? 'b' : 'w';
-    const winner = winnerColor === 'w' ? 'White' : 'Black';
-    endGame('Resignation', `${winner} wins by resignation`, '🏳️', winnerColor);
+    const winner = resigningColor === 'w' ? 'Black' : 'White';
+    const botResult = isBotMode() ? 'won' : null;
+    endGame('Resignation', `${winner} wins by resignation`, '🏳️', botResult);
     sendPeerData({ type: 'resign', color: resigningColor });
   });
 
@@ -524,7 +509,6 @@ function switchSetupTab(tabMode) {
     els.colorSelectSection.classList.remove('hidden');
     els.localOptionsSection.classList.add('hidden');
     els.startActionBtn.textContent = 'Start Game vs Bot';
-    updateBotSetupUI();
   }
 }
 
@@ -557,9 +541,6 @@ function handleStartAction() {
   } else if (state.setupTab === 'bot') {
     cleanupPeer();
     state.mode = 'bot';
-    if (state.botPreset === 'custom') {
-      state.botElo = Math.max(200, Math.min(3200, parseInt(els.botEloSlider.value, 10) || 1200));
-    }
     let playerColor = state.hostColorPref;
     if (playerColor === 'random') {
       playerColor = Math.random() < 0.5 ? 'w' : 'b';
@@ -825,26 +806,45 @@ function isBotMode() {
   return state.mode === 'bot';
 }
 
-function updateBotSetupUI() {
-  const preset = BOT_PRESETS[state.botPreset] || BOT_PRESETS.kvadromech;
-  const isCustom = state.botPreset === 'custom';
-  els.customBotDifficultyRow.classList.toggle('hidden', !isCustom);
-  if (!isCustom && preset.preQuote) {
-    els.botQuoteSpeaker.textContent = `${preset.name}:`;
-    els.botQuoteText.textContent = `“${preset.preQuote}”`;
-    els.botPreGameQuote.classList.remove('hidden');
+function selectBotProfile(botId) {
+  state.selectedBotId = botId;
+  els.botCards.forEach((card) => {
+    card.classList.toggle('active', card.dataset.bot === botId);
+  });
+
+  if (botId === 'custom') {
+    els.botProfilePreview.classList.add('hidden');
+    els.customBotEloRow.classList.remove('hidden');
   } else {
-    els.botPreGameQuote.classList.add('hidden');
+    const bot = NAMED_BOTS[botId] || NAMED_BOTS.kvadromech;
+    els.customBotEloRow.classList.add('hidden');
+    els.botProfilePreview.classList.remove('hidden');
+    els.previewBotImg.src = bot.avatar;
+    els.previewBotImg.alt = bot.name;
+    els.previewBotName.textContent = bot.name;
+    els.previewBotElo.textContent = `${bot.elo} ELO`;
+    els.previewBotReplica.textContent = `“${bot.replicaBefore}”`;
   }
 }
 
 function getActiveBotInfo() {
-  const preset = BOT_PRESETS[state.botPreset] || BOT_PRESETS.kvadromech;
-  const elo = preset.id === 'custom' ? state.botElo : preset.elo;
+  if (state.selectedBotId !== 'custom' && NAMED_BOTS[state.selectedBotId]) {
+    const bot = NAMED_BOTS[state.selectedBotId];
+    return {
+      ...bot,
+      title: BOT_ELO_TITLES[bot.elo] || 'Bot'
+    };
+  }
+  const elo = state.botElo;
   return {
-    ...preset,
+    id: 'custom',
+    name: 'Custom Bot',
     elo,
-    title: BOT_ELO_TITLES[elo] || 'Custom'
+    title: BOT_ELO_TITLES[elo] || 'Custom',
+    avatar: 'assets/bot-custom.svg',
+    replicaBefore: null,
+    replicaWon: null,
+    replicaLost: null
   };
 }
 
@@ -872,8 +872,25 @@ function startNewBoardSession({ myColor = 'w', minutes = 10, increment = 0, wait
   state.gameActive = !waitingForPeer;
 
   els.gameOverOverlay.classList.add('hidden');
+  els.gameOverReplica.classList.add('hidden');
+  els.gameOverReplica.innerHTML = '';
   els.promotionOverlay.classList.add('hidden');
   els.drawOfferBanner.classList.add('hidden');
+
+  if (isBotMode()) {
+    const bot = getActiveBotInfo();
+    if (bot.replicaBefore) {
+      els.botChatAvatar.src = bot.avatar;
+      els.botChatAvatar.alt = bot.name;
+      els.botChatName.textContent = `${bot.name} (${bot.elo} ELO)`;
+      els.botChatQuote.textContent = `“${bot.replicaBefore}”`;
+      els.botChatBubble.classList.remove('hidden');
+    } else {
+      els.botChatBubble.classList.add('hidden');
+    }
+  } else {
+    els.botChatBubble.classList.add('hidden');
+  }
 
   // Clear URL invite param cleanly so refreshing doesn't force join modal
   if (window.history && window.history.replaceState) {
@@ -904,9 +921,9 @@ function startClockIfNeeded() {
     if (state.clocks[turn] <= 0) {
       state.clocks[turn] = 0;
       renderClocks();
-      const winnerColor = turn === 'w' ? 'b' : 'w';
-      const winner = winnerColor === 'w' ? 'White' : 'Black';
-      endGame('Time Out', `${winner} wins on time`, '⏱️', winnerColor);
+      const winner = turn === 'w' ? 'Black' : 'White';
+      const botResult = isBotMode() ? (turn === state.myColor ? 'won' : 'lost') : null;
+      endGame('Time Out', `${winner} wins on time`, '⏱️', botResult);
       sendPeerData({ type: 'timeout', loser: turn });
     }
   }, 100);
@@ -1153,21 +1170,21 @@ function checkGameOverConditions() {
   if (!state.chess.game_over()) return;
 
   if (state.chess.in_checkmate()) {
-    const winnerColor = state.chess.turn() === 'w' ? 'b' : 'w';
-    const winner = winnerColor === 'w' ? 'White' : 'Black';
-    endGame('Checkmate!', `${winner} wins by checkmate`, '🏆', winnerColor);
+    const winner = state.chess.turn() === 'w' ? 'Black' : 'White';
+    const botResult = isBotMode() ? (state.chess.turn() === state.myColor ? 'won' : 'lost') : null;
+    endGame('Checkmate!', `${winner} wins by checkmate`, '🏆', botResult);
   } else if (state.chess.in_stalemate()) {
-    endGame('Stalemate', 'Draw by stalemate', '🤝', null);
+    endGame('Stalemate', 'Draw by stalemate', '🤝');
   } else if (state.chess.in_threefold_repetition()) {
-    endGame('Draw', 'Draw by threefold repetition', '🤝', null);
+    endGame('Draw', 'Draw by threefold repetition', '🤝');
   } else if (state.chess.insufficient_material()) {
-    endGame('Draw', 'Draw by insufficient material', '🤝', null);
+    endGame('Draw', 'Draw by insufficient material', '🤝');
   } else if (state.chess.in_draw()) {
-    endGame('Draw', 'Draw by 50-move rule', '🤝', null);
+    endGame('Draw', 'Draw by 50-move rule', '🤝');
   }
 }
 
-function endGame(title, subtitle, icon = '🏆', winnerColor = null) {
+function endGame(title, subtitle, icon = '🏆', botResult = null) {
   state.gameActive = false;
   state.botThinking = false;
   state.botSessionId++;
@@ -1178,19 +1195,17 @@ function endGame(title, subtitle, icon = '🏆', winnerColor = null) {
   els.gameOverTitle.textContent = title;
   els.gameOverSubtitle.textContent = subtitle;
 
-  // Show bot win/loss quote if applicable
-  if (isBotMode() && winnerColor) {
+  els.gameOverReplica.classList.add('hidden');
+  els.gameOverReplica.innerHTML = '';
+
+  if (isBotMode() && botResult) {
     const bot = getActiveBotInfo();
-    const botWon = winnerColor !== state.myColor;
-    const quote = botWon ? bot.winQuote : bot.loseQuote;
-    if (quote) {
-      els.gameOverQuote.textContent = `${bot.name}: “${quote}”`;
-      els.gameOverQuote.classList.remove('hidden');
-    } else {
-      els.gameOverQuote.classList.add('hidden');
+    const replica = botResult === 'won' ? bot.replicaWon : bot.replicaLost;
+    if (replica) {
+      els.gameOverReplica.innerHTML = `<img src="${bot.avatar}" alt="${bot.name}" /><div><strong>${bot.name}:</strong> “${replica}”</div>`;
+      els.gameOverReplica.classList.remove('hidden');
+      els.botChatQuote.textContent = `“${replica}”`;
     }
-  } else {
-    els.gameOverQuote.classList.add('hidden');
   }
 
   els.gameOverOverlay.classList.remove('hidden');
@@ -1214,7 +1229,7 @@ function updateUI() {
 function setPlayerAvatar(el, color) {
   if (isBotMode() && color !== state.myColor) {
     const bot = getActiveBotInfo();
-    el.textContent = bot.emoji || '🤖';
+    el.innerHTML = `<img src="${bot.avatar}" alt="${bot.name}" />`;
     return;
   }
   el.textContent = color === 'w' ? '♔' : '♚';
@@ -1331,7 +1346,7 @@ function updateStatusCard() {
       els.statusText.textContent =
         turn === state.myColor
           ? `Your turn (${colorName(turn)})${checkSuffix}`
-          : `${bot.name} (${bot.elo}) is thinking...`;
+          : `${bot.name} (${bot.elo} ELO) is thinking...`;
     } else {
       els.statusText.textContent = `${colorName(turn)} to move${checkSuffix}`;
     }
@@ -1341,7 +1356,7 @@ function updateStatusCard() {
     els.modeTag.textContent = '🌐 Online P2P';
   } else if (isBotMode()) {
     const bot = getActiveBotInfo();
-    els.modeTag.textContent = `🤖 vs ${bot.name} (${bot.elo})`;
+    els.modeTag.textContent = `🤖 vs ${bot.name} (${bot.elo} ELO)`;
   } else {
     els.modeTag.textContent = '📱 Local Pass & Play';
   }

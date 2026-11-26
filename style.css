@@ -457,17 +457,6 @@ html, body {
   margin-bottom: 16px;
 }
 
-.gameover-quote {
-  background: var(--bg-elevated);
-  border-left: 3px solid var(--accent);
-  border-radius: 6px;
-  padding: 8px 12px;
-  font-style: italic;
-  color: var(--text-primary) !important;
-  font-size: 0.88rem !important;
-  margin-bottom: 16px !important;
-}
-
 .gameover-actions {
   display: flex;
   gap: 10px;
@@ -778,13 +767,15 @@ html, body {
   background: var(--bg-panel);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  max-width: 520px;
+  max-width: 540px;
   width: 100%;
-  padding: 20px;
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  padding: 18px;
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 .modal-header {
@@ -833,63 +824,47 @@ html, body {
   border-radius: var(--radius-sm);
 }
 
-/* Bot ELO Selector */
-.bot-preset-grid {
+/* Bot Profile Selector */
+.bot-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
 
-.bot-preset-card {
+.bot-card {
   background: var(--bg-elevated);
   border: 1.5px solid var(--border-color);
   border-radius: var(--radius-sm);
-  padding: 10px 6px;
+  padding: 8px 6px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 3px;
+  text-align: center;
+  gap: 6px;
   color: var(--text-primary);
   font-family: inherit;
   transition: all 0.15s ease;
 }
 
-.bot-preset-card:hover {
+.bot-card:hover {
   background: var(--bg-hover);
 }
 
-.bot-preset-card.active {
+.bot-card.active {
   background: var(--accent-soft);
   border-color: var(--accent);
 }
 
-.bot-preset-name {
-  font-weight: 700;
-  font-size: 0.82rem;
-  line-height: 1.2;
-}
-
-.bot-preset-elo {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--accent);
-}
-
-.bot-avatar-emoji {
-  width: 46px;
-  height: 46px;
+.bot-avatar-img {
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  background: var(--bg-main);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.5rem;
+  object-fit: cover;
   border: 2px solid rgba(255, 255, 255, 0.15);
 }
 
-.bot-preset-card.active .bot-avatar-emoji {
+.bot-card.active .bot-avatar-img {
   border-color: var(--accent);
 }
 
@@ -897,70 +872,141 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  align-items: center;
+  min-width: 0;
+  width: 100%;
 }
 
-.bot-desc {
+.bot-name {
+  font-weight: 700;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bot-elo {
   font-size: 0.68rem;
-  color: var(--text-secondary);
-}
-
-.elo-quick-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 2px;
-}
-
-.elo-pill {
-  flex: 1;
-  min-width: 44px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  color: var(--text-secondary);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.72rem;
+  color: var(--accent);
   font-weight: 600;
-  padding: 5px 4px;
-  cursor: pointer;
-  transition: all 0.15s;
 }
 
-.elo-pill:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+.bot-profile-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-main);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
 }
 
-.elo-pill.active {
+.preview-bot-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 2px solid var(--accent);
+}
+
+.preview-bot-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.preview-bot-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-bot-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.preview-bot-elo {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
   background: var(--accent-soft);
-  border-color: var(--accent);
   color: var(--accent);
 }
 
-.bot-quote-box {
-  background: var(--bg-main);
+.preview-bot-replica {
+  font-size: 0.86rem;
+  font-style: italic;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  padding: 6px 10px;
+  border-radius: 8px;
+  border-left: 3px solid var(--accent);
+}
+
+/* Sidebar & Game Over Bot Replicas */
+.bot-chat-bubble {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-elevated);
   border: 1px solid var(--border-color);
   border-left: 3px solid var(--accent);
   border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  font-size: 0.85rem;
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  flex-wrap: wrap;
+  padding: 8px 10px;
 }
 
-.bot-quote-speaker {
+.bot-chat-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.bot-chat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bot-chat-name {
+  font-size: 0.74rem;
   font-weight: 700;
   color: var(--accent);
 }
 
-.bot-quote-text {
+.bot-chat-quote {
+  font-size: 0.82rem;
   font-style: italic;
   color: var(--text-primary);
 }
 
+.gameover-replica {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin: 0 auto 14px;
+  font-size: 0.86rem;
+  font-style: italic;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.gameover-replica img {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Bot ELO Selector */
 .custom-bot-row {
   background: var(--bg-main);
   border: 1px solid var(--border-color);
@@ -1229,7 +1275,7 @@ html, body {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .bot-preset-grid {
+  .bot-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
