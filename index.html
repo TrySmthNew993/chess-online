@@ -195,17 +195,18 @@
       <div class="modal-body">
         <!-- Bot Opponent Section (Only for bot mode) -->
         <div id="botSelectSection" class="setup-section hidden">
-          <label class="section-label">Bot Rating (ELO)</label>
+          <label class="section-label">Bot Rating (Chess.com ELO)</label>
           <div class="custom-bot-row">
             <div class="custom-bot-header">
               <label for="botEloSlider">Strength</label>
-              <span class="custom-bot-badge" id="botEloLabel">1000 ELO — Amateur</span>
+              <span class="custom-bot-badge" id="botEloLabel">1200 ELO — Intermediate</span>
             </div>
-            <input type="range" id="botEloSlider" min="400" max="2000" step="100" value="1000" class="bot-slider" />
+            <input type="range" id="botEloSlider" min="200" max="3200" step="100" value="1200" class="bot-slider" />
             <div class="slider-ticks">
-              <span>400 (Beginner)</span>
-              <span>1200 (Intermediate)</span>
-              <span>2000 (Master)</span>
+              <span>200 (Beginner)</span>
+              <span>1200</span>
+              <span>2200 (Master)</span>
+              <span>3200 (Max)</span>
             </div>
           </div>
         </div>
@@ -325,6 +326,7 @@
     </div>
   </div>
 
+  <script src="engine.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

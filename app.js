@@ -85,23 +85,37 @@ class SoundFX {
 const sfx = new SoundFX();
 
 const BOT_ELO_TITLES = {
-  400: 'Complete Beginner',
+  200: 'Beginner',
+  300: 'Beginner',
+  400: 'Beginner',
   500: 'Novice',
-  600: 'Casual Beginner',
-  700: 'Improving',
-  800: 'Casual Player',
-  900: 'Hobbyist',
-  1000: 'Amateur',
-  1100: 'Club Novice',
+  600: 'Novice',
+  700: 'Novice',
+  800: 'Intermediate',
+  900: 'Intermediate',
+  1000: 'Intermediate',
+  1100: 'Intermediate',
   1200: 'Intermediate',
-  1300: 'Club Player',
-  1400: 'Solid Club',
-  1500: 'Strong Club',
-  1600: 'Advanced',
-  1700: 'Tournament',
+  1300: 'Advanced',
+  1400: 'Advanced',
+  1500: 'Advanced',
+  1600: 'Expert',
+  1700: 'Expert',
   1800: 'Expert',
-  1900: 'Candidate Master',
-  2000: 'Master'
+  1900: 'Expert',
+  2000: 'Candidate Master',
+  2100: 'Master',
+  2200: 'National Master',
+  2300: 'FIDE Master',
+  2400: 'FIDE Master',
+  2500: 'International Master',
+  2600: 'International Master',
+  2700: 'Grandmaster',
+  2800: 'Grandmaster',
+  2900: 'Super GM',
+  3000: 'Super GM',
+  3100: 'Engine',
+  3200: 'Maximum'
 };
 
 // Main Application State
@@ -115,7 +129,7 @@ const state = {
   autoFlipLocal: false,
 
   // Bot mode state
-  botElo: 1000,
+  botElo: 1200,
   botThinking: false,
   botSessionId: 0,
 
@@ -1255,86 +1269,21 @@ function colorName(c) {
 }
 
 // ==========================================
-// Chess Bot Engine (Levels 1 - 10)
+// Chess Bot Runner (Delegates to ChessBotEngine in engine.js)
 // ==========================================
-const AI_PIECE_VALUES = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
-
-// Piece-square tables from White's perspective (row 0 = rank 8, row 7 = rank 1)
-const PST = {
-  p: [
-    [0,  0,  0,  0,  0,  0,  0,  0],
-    [50, 50, 50, 50, 50, 50, 50, 50],
-    [10, 10, 20, 30, 30, 20, 10, 10],
-    [5,  5, 10, 27, 27, 10,  5,  5],
-    [0,  0,  0, 22, 22,  0,  0,  0],
-    [5, -5,-10,  0,  0,-10, -5,  5],
-    [5, 10, 10,-22,-22, 10, 10,  5],
-    [0,  0,  0,  0,  0,  0,  0,  0]
-  ],
-  n: [
-    [-50,-40,-30,-30,-30,-30,-40,-50],
-    [-40,-20,  0,  0,  0,  0,-20,-40],
-    [-30,  0, 10, 15, 15, 10,  0,-30],
-    [-30,  5, 15, 20, 20, 15,  5,-30],
-    [-30,  0, 15, 20, 20, 15,  0,-30],
-    [-30,  5, 10, 15, 15, 10,  5,-30],
-    [-40,-20,  0,  5,  5,  0,-20,-40],
-    [-50,-40,-30,-30,-30,-30,-40,-50]
-  ],
-  b: [
-    [-20,-10,-10,-10,-10,-10,-10,-20],
-    [-10,  0,  0,  0,  0,  0,  0,-10],
-    [-10,  0,  5, 10, 10,  5,  0,-10],
-    [-10,  5,  5, 10, 10,  5,  5,-10],
-    [-10,  0, 10, 10, 10, 10,  0,-10],
-    [-10, 10, 10, 10, 10, 10, 10,-10],
-    [-10,  5,  0,  0,  0,  0,  5,-10],
-    [-20,-10,-10,-10,-10,-10,-10,-20]
-  ],
-  r: [
-    [0,  0,  0,  0,  0,  0,  0,  0],
-    [5, 10, 10, 10, 10, 10, 10,  5],
-    [-5, 0,  0,  0,  0,  0,  0, -5],
-    [-5, 0,  0,  0,  0,  0,  0, -5],
-    [-5, 0,  0,  0,  0,  0,  0, -5],
-    [-5, 0,  0,  0,  0,  0,  0, -5],
-    [-5, 0,  0,  0,  0,  0,  0, -5],
-    [0,  0,  0,  5,  5,  0,  0,  0]
-  ],
-  q: [
-    [-20,-10,-10, -5, -5,-10,-10,-20],
-    [-10,  0,  0,  0,  0,  0,  0,-10],
-    [-10,  0,  5,  5,  5,  5,  0,-10],
-    [-5,   0,  5,  5,  5,  5,  0, -5],
-    [0,    0,  5,  5,  5,  5,  0, -5],
-    [-10,  5,  5,  5,  5,  5,  0,-10],
-    [-10,  0,  5,  0,  0,  0,  0,-10],
-    [-20,-10,-10, -5, -5,-10,-10,-20]
-  ],
-  k: [
-    [-30,-40,-40,-50,-50,-40,-40,-30],
-    [-30,-40,-40,-50,-50,-40,-40,-30],
-    [-30,-40,-40,-50,-50,-40,-40,-30],
-    [-30,-40,-40,-50,-50,-40,-40,-30],
-    [-20,-30,-30,-40,-40,-30,-30,-20],
-    [-10,-20,-20,-20,-20,-20,-20,-10],
-    [20,  20,  0,  0,  0,  0, 20, 20],
-    [20,  30, 10,  0,  0, 10, 30, 20]
-  ]
-};
-
 function getBotThinkDelayMs(elo) {
-  const t = Math.max(0, Math.min(1, (elo - 400) / 1600));
-  const minDelay = 650 + Math.round(t * 1850); // 400 ELO: 650ms, 1200 ELO: 1575ms, 2000 ELO: 2500ms
-  const jitter = 450 + Math.round(t * 1350);   // 400 ELO: +0..450ms, 2000 ELO: +0..1800ms
-  let delayMs = minDelay + Math.floor(Math.random() * jitter);
+  // Low ELOs need a brief artificial delay since depth 1-2 finishes in <10ms;
+  // High ELOs already spend 1-2.8s searching in ChessBotEngine.
+  const t = Math.max(0, Math.min(1, (elo - 200) / 3000));
+  let delayMs = elo <= 1200
+    ? 600 + Math.round(t * 1400) + Math.floor(Math.random() * 500)
+    : 220 + Math.floor(Math.random() * 250);
 
-  // Speed up under low-clock time pressure so the bot doesn't flag itself
   if (!state.unlimitedTime) {
     const botColor = state.myColor === 'w' ? 'b' : 'w';
     const remainingMs = state.clocks[botColor];
     if (remainingMs < 20000) {
-      delayMs = Math.min(delayMs, Math.max(250, Math.floor(remainingMs * 0.25)));
+      delayMs = Math.min(delayMs, Math.max(150, Math.floor(remainingMs * 0.2)));
     }
   }
   return delayMs;
@@ -1354,228 +1303,28 @@ function scheduleBotMove() {
       return;
     }
 
-    const chosenMove = computeBotMove(state.chess, bot.elo);
+    let chosenMove = null;
+    if (window.ChessBotEngine) {
+      chosenMove = window.ChessBotEngine.findBestMove(state.chess.fen(), bot.elo);
+    }
+
+    // Safety fallback against chess.js legal moves
+    const legal = state.chess.moves({ verbose: true });
+    if (legal.length > 0) {
+      const valid = chosenMove && legal.some(
+        (m) => m.from === chosenMove.from && m.to === chosenMove.to
+      );
+      if (!valid) {
+        chosenMove = legal[Math.floor(Math.random() * legal.length)];
+      }
+    }
+
     state.botThinking = false;
 
     if (chosenMove && sessionId === state.botSessionId && state.gameActive) {
       applyMoveOnBoard(chosenMove.from, chosenMove.to, chosenMove.promotion || 'q', false);
     }
   }, delayMs);
-}
-
-function evaluateBoardForSide(chess, perspectiveColor) {
-  if (chess.in_checkmate()) {
-    return chess.turn() === perspectiveColor ? -99999 : 99999;
-  }
-  if (chess.in_draw() || chess.in_stalemate() || chess.in_threefold_repetition() || chess.insufficient_material()) {
-    return 0;
-  }
-
-  const board = chess.board();
-  let score = 0;
-
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-      const piece = board[r][c];
-      if (!piece) continue;
-      const pstRow = piece.color === 'w' ? r : 7 - r;
-      const val = AI_PIECE_VALUES[piece.type] + PST[piece.type][pstRow][c];
-      score += piece.color === perspectiveColor ? val : -val;
-    }
-  }
-  return score;
-}
-
-function orderMoves(moves) {
-  return moves.sort((a, b) => {
-    let scoreA = 0;
-    let scoreB = 0;
-    if (a.captured) scoreA += AI_PIECE_VALUES[a.captured] * 10 - AI_PIECE_VALUES[a.piece];
-    if (b.captured) scoreB += AI_PIECE_VALUES[b.captured] * 10 - AI_PIECE_VALUES[b.piece];
-    if (a.promotion) scoreA += AI_PIECE_VALUES[a.promotion];
-    if (b.promotion) scoreB += AI_PIECE_VALUES[b.promotion];
-    if (a.san && a.san.includes('+')) scoreA += 45;
-    if (b.san && b.san.includes('+')) scoreB += 45;
-    return scoreB - scoreA;
-  });
-}
-
-function quiescence(chess, alpha, beta, maximizing, perspectiveColor, qDepth, deadline) {
-  const standPat = evaluateBoardForSide(chess, perspectiveColor);
-  if (qDepth <= 0 || performance.now() > deadline) return standPat;
-
-  if (maximizing) {
-    if (standPat >= beta) return beta;
-    if (alpha < standPat) alpha = standPat;
-
-    const captures = orderMoves(chess.moves({ verbose: true }).filter((m) => m.captured || m.promotion));
-    for (let i = 0; i < captures.length; i++) {
-      chess.move(captures[i]);
-      const score = quiescence(chess, alpha, beta, false, perspectiveColor, qDepth - 1, deadline);
-      chess.undo();
-      if (score >= beta) return beta;
-      if (score > alpha) alpha = score;
-    }
-    return alpha;
-  } else {
-    if (standPat <= alpha) return alpha;
-    if (beta > standPat) beta = standPat;
-
-    const captures = orderMoves(chess.moves({ verbose: true }).filter((m) => m.captured || m.promotion));
-    for (let i = 0; i < captures.length; i++) {
-      chess.move(captures[i]);
-      const score = quiescence(chess, alpha, beta, true, perspectiveColor, qDepth - 1, deadline);
-      chess.undo();
-      if (score <= alpha) return alpha;
-      if (score < beta) beta = score;
-    }
-    return beta;
-  }
-}
-
-function minimax(chess, depth, alpha, beta, maximizing, perspectiveColor, useQuiescence, deadline) {
-  if (chess.game_over() || depth === 0 || performance.now() > deadline) {
-    if (useQuiescence && !chess.game_over() && performance.now() <= deadline) {
-      return quiescence(chess, alpha, beta, maximizing, perspectiveColor, 2, deadline);
-    }
-    return evaluateBoardForSide(chess, perspectiveColor);
-  }
-
-  const moves = orderMoves(chess.moves({ verbose: true }));
-  if (moves.length === 0) {
-    return evaluateBoardForSide(chess, perspectiveColor);
-  }
-
-  if (maximizing) {
-    let maxEval = -Infinity;
-    for (let i = 0; i < moves.length; i++) {
-      chess.move(moves[i]);
-      const ev = minimax(chess, depth - 1, alpha, beta, false, perspectiveColor, useQuiescence, deadline);
-      chess.undo();
-      if (ev > maxEval) maxEval = ev;
-      if (ev > alpha) alpha = ev;
-      if (beta <= alpha) break;
-    }
-    return maxEval;
-  } else {
-    let minEval = Infinity;
-    for (let i = 0; i < moves.length; i++) {
-      chess.move(moves[i]);
-      const ev = minimax(chess, depth - 1, alpha, beta, true, perspectiveColor, useQuiescence, deadline);
-      chess.undo();
-      if (ev < minEval) minEval = ev;
-      if (ev < beta) beta = ev;
-      if (beta <= alpha) break;
-    }
-    return minEval;
-  }
-}
-
-function computeBotMove(liveChess, elo) {
-  const chess = new Chess(liveChess.fen());
-  const legalMoves = chess.moves({ verbose: true });
-  if (legalMoves.length === 0) return null;
-
-  // 400 ELO: Complete beginner — mostly random, takes an obvious capture ~18% of the time
-  if (elo <= 400) {
-    const captures = legalMoves.filter((m) => m.captured);
-    if (captures.length > 0 && Math.random() < 0.18) {
-      return captures[Math.floor(Math.random() * captures.length)];
-    }
-    return legalMoves[Math.floor(Math.random() * legalMoves.length)];
-  }
-
-  const botColor = chess.turn();
-  const pieceCount = chess.board().flat().filter(Boolean).length;
-
-  // Map ELO (500..2000) to search depth, noise (centipawns), and quiescence
-  let depth = 1;
-  let noise = 0;
-  let useQuiescence = false;
-  let timeBudgetMs = 850;
-
-  if (elo <= 500) {
-    depth = 1;
-    noise = 360;
-  } else if (elo <= 600) {
-    depth = 1;
-    noise = 280;
-  } else if (elo <= 700) {
-    depth = 1;
-    noise = 200;
-  } else if (elo <= 800) {
-    depth = 1;
-    noise = 135;
-  } else if (elo <= 900) {
-    depth = 1;
-    noise = 85;
-  } else if (elo <= 1000) {
-    depth = 2;
-    noise = 110;
-  } else if (elo <= 1100) {
-    depth = 2;
-    noise = 70;
-  } else if (elo <= 1200) {
-    depth = 2;
-    noise = 40;
-  } else if (elo <= 1300) {
-    depth = 2;
-    noise = 18;
-    useQuiescence = true;
-  } else if (elo <= 1400) {
-    depth = 2;
-    noise = 0;
-    useQuiescence = true;
-  } else if (elo <= 1500) {
-    depth = 3;
-    noise = 30;
-  } else if (elo <= 1600) {
-    depth = 3;
-    noise = 12;
-    useQuiescence = true;
-  } else if (elo <= 1700) {
-    depth = 3;
-    noise = 0;
-    useQuiescence = true;
-  } else if (elo <= 1800) {
-    depth = pieceCount <= 14 ? 4 : 3;
-    noise = 0;
-    useQuiescence = true;
-  } else if (elo <= 1900) {
-    depth = pieceCount <= 18 ? 4 : 3;
-    noise = 0;
-    useQuiescence = true;
-    timeBudgetMs = 900;
-  } else {
-    // 2000 ELO
-    depth = pieceCount <= 22 ? 4 : 3;
-    noise = 0;
-    useQuiescence = true;
-    timeBudgetMs = 950;
-  }
-
-  const deadline = performance.now() + timeBudgetMs;
-  const ordered = orderMoves(legalMoves);
-  const scoredMoves = [];
-
-  for (let i = 0; i < ordered.length; i++) {
-    const move = ordered[i];
-    chess.move(move);
-    let score = minimax(chess, depth - 1, -Infinity, Infinity, false, botColor, useQuiescence, deadline);
-    chess.undo();
-
-    if (noise > 0) {
-      score += (Math.random() * 2 - 1) * noise;
-    } else {
-      // Tiny tie-breaker so identical-eval openings vary naturally
-      score += Math.random() * 4;
-    }
-
-    scoredMoves.push({ move, score });
-  }
-
-  scoredMoves.sort((a, b) => b.score - a.score);
-  return scoredMoves[0].move;
 }
 
 // Boot the app
