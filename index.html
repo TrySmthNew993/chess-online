@@ -198,42 +198,67 @@
         <div id="botSelectSection" class="setup-section hidden">
           <label class="section-label">Choose Bot Opponent</label>
           <div class="bot-preset-grid" id="botPresetGrid">
-            <button type="button" class="bot-preset-card active" data-bot="kvadromech">
-              <span class="bot-preset-name">Квадромеч</span>
-              <span class="bot-preset-elo">500 ELO</span>
+            <button type="button" class="bot-preset-card active" data-bot="peres">
+              <div class="bot-avatar-emoji">🚀</div>
+              <div class="bot-info">
+                <span class="bot-preset-name">Перес</span>
+                <span class="bot-preset-elo">300 ELO</span>
+              </div>
+              <span class="bot-desc">Beginner</span>
+            </button>
+            <button type="button" class="bot-preset-card" data-bot="kvadromech">
+              <div class="bot-avatar-emoji">⚔️</div>
+              <div class="bot-info">
+                <span class="bot-preset-name">Квадромеч</span>
+                <span class="bot-preset-elo">500 ELO</span>
+              </div>
+              <span class="bot-desc">Novice</span>
             </button>
             <button type="button" class="bot-preset-card" data-bot="kandaliha">
-              <span class="bot-preset-name">Кандалиха</span>
-              <span class="bot-preset-elo">900 ELO</span>
-            </button>
-            <button type="button" class="bot-preset-card" data-bot="peres">
-              <span class="bot-preset-name">Перес</span>
-              <span class="bot-preset-elo">300 ELO</span>
+              <div class="bot-avatar-emoji">📝</div>
+              <div class="bot-info">
+                <span class="bot-preset-name">Кандалиха</span>
+                <span class="bot-preset-elo">900 ELO</span>
+              </div>
+              <span class="bot-desc">Intermediate</span>
             </button>
             <button type="button" class="bot-preset-card" data-bot="custom">
-              <span class="bot-preset-name">Custom</span>
-              <span class="bot-preset-elo" id="customBotCardElo">1200 ELO</span>
+              <div class="bot-avatar-emoji">🤖</div>
+              <div class="bot-info">
+                <span class="bot-preset-name">Custom</span>
+                <span class="bot-preset-elo" id="customBotCardElo">1200 ELO</span>
+              </div>
+              <span class="bot-desc">200 – 3200</span>
             </button>
           </div>
 
           <!-- Pre-game Bot Quote -->
           <div id="botPreGameQuote" class="bot-quote-box">
-            <span class="bot-quote-speaker" id="botQuoteSpeaker">Квадромеч:</span>
-            <span class="bot-quote-text" id="botQuoteText">“Marat?”</span>
+            <span class="bot-quote-speaker" id="botQuoteSpeaker">Перес:</span>
+            <span class="bot-quote-text" id="botQuoteText">“Are you with me guys?”</span>
           </div>
 
-          <!-- Custom Bot ELO Slider -->
+          <!-- Custom Bot ELO Selector -->
           <div id="customBotDifficultyRow" class="custom-bot-row hidden">
             <div class="custom-bot-header">
-              <label for="botEloSlider">Strength</label>
+              <label for="botEloSlider">Custom ELO</label>
               <span class="custom-bot-badge" id="botEloLabel">1200 ELO — Intermediate</span>
             </div>
             <input type="range" id="botEloSlider" min="200" max="3200" step="100" value="1200" class="bot-slider" />
             <div class="slider-ticks">
-              <span>200 (Beginner)</span>
+              <span>200</span>
               <span>1200</span>
-              <span>2200 (Master)</span>
-              <span>3200 (Max)</span>
+              <span>2200</span>
+              <span>3200</span>
+            </div>
+            <div class="elo-quick-pills" id="eloQuickPills">
+              <button type="button" class="elo-pill" data-elo="400">400</button>
+              <button type="button" class="elo-pill" data-elo="800">800</button>
+              <button type="button" class="elo-pill active" data-elo="1200">1200</button>
+              <button type="button" class="elo-pill" data-elo="1600">1600</button>
+              <button type="button" class="elo-pill" data-elo="2000">2000</button>
+              <button type="button" class="elo-pill" data-elo="2500">2500</button>
+              <button type="button" class="elo-pill" data-elo="3200">3200</button>
             </div>
           </div>
         </div>

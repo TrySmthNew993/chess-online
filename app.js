@@ -85,10 +85,20 @@ class SoundFX {
 const sfx = new SoundFX();
 
 const BOT_PRESETS = {
+  peres: {
+    id: 'peres',
+    name: 'Перес',
+    elo: 300,
+    emoji: '🚀',
+    preQuote: 'Are you with me guys?',
+    winQuote: 'Easy peasy!',
+    loseQuote: 'This was a rocket science…'
+  },
   kvadromech: {
     id: 'kvadromech',
     name: 'Квадромеч',
     elo: 500,
+    emoji: '⚔️',
     preQuote: 'Marat?',
     winQuote: 'Eso es Revolución Francesa',
     loseQuote: 'A estudiar.'
@@ -97,22 +107,16 @@ const BOT_PRESETS = {
     id: 'kandaliha',
     name: 'Кандалиха',
     elo: 900,
+    emoji: '📝',
     preQuote: 'Exam…',
     winQuote: 'Hoy es el dia de las notas, jajajaja',
     loseQuote: 'Has usado el movil sin permiso'
-  },
-  peres: {
-    id: 'peres',
-    name: 'Перес',
-    elo: 300,
-    preQuote: 'Are you with me guys?',
-    winQuote: 'Easy peasy!',
-    loseQuote: 'This was a rocket science…'
   },
   custom: {
     id: 'custom',
     name: 'Custom Bot',
     elo: 1200,
+    emoji: '🤖',
     preQuote: null,
     winQuote: null,
     loseQuote: null
@@ -164,7 +168,7 @@ const state = {
   autoFlipLocal: false,
 
   // Bot mode state
-  botPreset: 'kvadromech', // 'kvadromech' | 'kandaliha' | 'peres' | 'custom'
+  botPreset: 'peres', // 'peres' | 'kvadromech' | 'kandaliha' | 'custom'
   botElo: 1200,
   botThinking: false,
   botSessionId: 0,
@@ -269,6 +273,7 @@ const els = {
   customBotCardElo: document.getElementById('customBotCardElo'),
   botEloSlider: document.getElementById('botEloSlider'),
   botEloLabel: document.getElementById('botEloLabel'),
+  eloQuickPills: document.querySelectorAll('.elo-pill'),
   setupErrorMsg: document.getElementById('setupErrorMsg'),
   startActionBtn: document.getElementById('startActionBtn')
 };
@@ -364,13 +369,23 @@ function bindEvents() {
     });
   });
 
-  // Custom bot ELO slider
-  els.botEloSlider.addEventListener('input', () => {
-    const elo = parseInt(els.botEloSlider.value, 10);
+  // Custom bot ELO slider + quick pills
+  const setCustomBotElo = (eloVal) => {
+    const elo = Math.max(200, Math.min(3200, parseInt(eloVal, 10) || 1200));
     state.botElo = elo;
+    els.botEloSlider.value = String(elo);
     const title = BOT_ELO_TITLES[elo] || 'Custom';
     els.botEloLabel.textContent = `${elo} ELO — ${title}`;
     els.customBotCardElo.textContent = `${elo} ELO`;
+    els.eloQuickPills.forEach((pill) => {
+      pill.classList.toggle('active', parseInt(pill.dataset.elo, 10) === elo);
+    });
+  };
+
+  els.botEloSlider.addEventListener('input', () => setCustomBotElo(els.botEloSlider.value));
+  els.botEloSlider.addEventListener('change', () => setCustomBotElo(els.botEloSlider.value));
+  els.eloQuickPills.forEach((pill) => {
+    pill.addEventListener('click', () => setCustomBotElo(pill.dataset.elo));
   });
 
   // Start action button
@@ -509,6 +524,7 @@ function switchSetupTab(tabMode) {
     els.colorSelectSection.classList.remove('hidden');
     els.localOptionsSection.classList.add('hidden');
     els.startActionBtn.textContent = 'Start Game vs Bot';
+    updateBotSetupUI();
   }
 }
 
@@ -541,6 +557,9 @@ function handleStartAction() {
   } else if (state.setupTab === 'bot') {
     cleanupPeer();
     state.mode = 'bot';
+    if (state.botPreset === 'custom') {
+      state.botElo = Math.max(200, Math.min(3200, parseInt(els.botEloSlider.value, 10) || 1200));
+    }
     let playerColor = state.hostColorPref;
     if (playerColor === 'random') {
       playerColor = Math.random() < 0.5 ? 'w' : 'b';
@@ -1193,6 +1212,11 @@ function updateUI() {
 }
 
 function setPlayerAvatar(el, color) {
+  if (isBotMode() && color !== state.myColor) {
+    const bot = getActiveBotInfo();
+    el.textContent = bot.emoji || '🤖';
+    return;
+  }
   el.textContent = color === 'w' ? '♔' : '♚';
 }
 

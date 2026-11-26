@@ -877,6 +877,67 @@ html, body {
   color: var(--accent);
 }
 
+.bot-avatar-emoji {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--bg-main);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+}
+
+.bot-preset-card.active .bot-avatar-emoji {
+  border-color: var(--accent);
+}
+
+.bot-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  align-items: center;
+}
+
+.bot-desc {
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+
+.elo-quick-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.elo-pill {
+  flex: 1;
+  min-width: 44px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 5px 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.elo-pill:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.elo-pill.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .bot-quote-box {
   background: var(--bg-main);
   border: 1px solid var(--border-color);
