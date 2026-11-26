@@ -88,7 +88,7 @@ const NAMED_BOTS = {
   kvadromech: {
     id: 'kvadromech',
     name: 'Квадромеч',
-    elo: 500,
+    elo: 700,
     avatar: 'assets/bot-kvadromech.svg',
     replicaBefore: 'Marat?',
     replicaWon: 'Eso es Revolución Francesa',
