@@ -77,6 +77,7 @@
               <div class="gameover-trophy" id="gameOverIcon">🏆</div>
               <h2 id="gameOverTitle">Checkmate!</h2>
               <p id="gameOverSubtitle">White wins by checkmate</p>
+              <p id="gameOverQuote" class="gameover-quote hidden"></p>
               <div class="gameover-actions">
                 <button id="rematchBtn" class="btn btn-primary">Rematch</button>
                 <button id="newSetupBtn" class="btn btn-secondary">Change Setup</button>
@@ -195,8 +196,34 @@
       <div class="modal-body">
         <!-- Bot Opponent Section (Only for bot mode) -->
         <div id="botSelectSection" class="setup-section hidden">
-          <label class="section-label">Bot Rating (Chess.com ELO)</label>
-          <div class="custom-bot-row">
+          <label class="section-label">Choose Bot Opponent</label>
+          <div class="bot-preset-grid" id="botPresetGrid">
+            <button type="button" class="bot-preset-card active" data-bot="kvadromech">
+              <span class="bot-preset-name">Квадромеч</span>
+              <span class="bot-preset-elo">500 ELO</span>
+            </button>
+            <button type="button" class="bot-preset-card" data-bot="kandaliha">
+              <span class="bot-preset-name">Кандалиха</span>
+              <span class="bot-preset-elo">900 ELO</span>
+            </button>
+            <button type="button" class="bot-preset-card" data-bot="peres">
+              <span class="bot-preset-name">Перес</span>
+              <span class="bot-preset-elo">300 ELO</span>
+            </button>
+            <button type="button" class="bot-preset-card" data-bot="custom">
+              <span class="bot-preset-name">Custom</span>
+              <span class="bot-preset-elo" id="customBotCardElo">1200 ELO</span>
+            </button>
+          </div>
+
+          <!-- Pre-game Bot Quote -->
+          <div id="botPreGameQuote" class="bot-quote-box">
+            <span class="bot-quote-speaker" id="botQuoteSpeaker">Квадромеч:</span>
+            <span class="bot-quote-text" id="botQuoteText">“Marat?”</span>
+          </div>
+
+          <!-- Custom Bot ELO Slider -->
+          <div id="customBotDifficultyRow" class="custom-bot-row hidden">
             <div class="custom-bot-header">
               <label for="botEloSlider">Strength</label>
               <span class="custom-bot-badge" id="botEloLabel">1200 ELO — Intermediate</span>

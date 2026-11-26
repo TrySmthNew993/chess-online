@@ -457,6 +457,17 @@ html, body {
   margin-bottom: 16px;
 }
 
+.gameover-quote {
+  background: var(--bg-elevated);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-style: italic;
+  color: var(--text-primary) !important;
+  font-size: 0.88rem !important;
+  margin-bottom: 16px !important;
+}
+
 .gameover-actions {
   display: flex;
   gap: 10px;
@@ -823,6 +834,72 @@ html, body {
 }
 
 /* Bot ELO Selector */
+.bot-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.bot-preset-card {
+  background: var(--bg-elevated);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 10px 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--text-primary);
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+.bot-preset-card:hover {
+  background: var(--bg-hover);
+}
+
+.bot-preset-card.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.bot-preset-name {
+  font-weight: 700;
+  font-size: 0.82rem;
+  line-height: 1.2;
+}
+
+.bot-preset-elo {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.bot-quote-box {
+  background: var(--bg-main);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.bot-quote-speaker {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.bot-quote-text {
+  font-style: italic;
+  color: var(--text-primary);
+}
+
 .custom-bot-row {
   background: var(--bg-main);
   border: 1px solid var(--border-color);
@@ -1088,6 +1165,10 @@ html, body {
   }
 
   .mode-tabs {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .bot-preset-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }

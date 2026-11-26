@@ -84,6 +84,41 @@ class SoundFX {
 
 const sfx = new SoundFX();
 
+const BOT_PRESETS = {
+  kvadromech: {
+    id: 'kvadromech',
+    name: 'Квадромеч',
+    elo: 500,
+    preQuote: 'Marat?',
+    winQuote: 'Eso es Revolución Francesa',
+    loseQuote: 'A estudiar.'
+  },
+  kandaliha: {
+    id: 'kandaliha',
+    name: 'Кандалиха',
+    elo: 900,
+    preQuote: 'Exam…',
+    winQuote: 'Hoy es el dia de las notas, jajajaja',
+    loseQuote: 'Has usado el movil sin permiso'
+  },
+  peres: {
+    id: 'peres',
+    name: 'Перес',
+    elo: 300,
+    preQuote: 'Are you with me guys?',
+    winQuote: 'Easy peasy!',
+    loseQuote: 'This was a rocket science…'
+  },
+  custom: {
+    id: 'custom',
+    name: 'Custom Bot',
+    elo: 1200,
+    preQuote: null,
+    winQuote: null,
+    loseQuote: null
+  }
+};
+
 const BOT_ELO_TITLES = {
   200: 'Beginner',
   300: 'Beginner',
@@ -129,6 +164,7 @@ const state = {
   autoFlipLocal: false,
 
   // Bot mode state
+  botPreset: 'kvadromech', // 'kvadromech' | 'kandaliha' | 'peres' | 'custom'
   botElo: 1200,
   botThinking: false,
   botSessionId: 0,
@@ -193,6 +229,7 @@ const els = {
   gameOverIcon: document.getElementById('gameOverIcon'),
   gameOverTitle: document.getElementById('gameOverTitle'),
   gameOverSubtitle: document.getElementById('gameOverSubtitle'),
+  gameOverQuote: document.getElementById('gameOverQuote'),
   rematchBtn: document.getElementById('rematchBtn'),
   newSetupBtn: document.getElementById('newSetupBtn'),
 
@@ -224,6 +261,12 @@ const els = {
   localOptionsSection: document.getElementById('localOptionsSection'),
   autoFlipCheckbox: document.getElementById('autoFlipCheckbox'),
   botSelectSection: document.getElementById('botSelectSection'),
+  botPresetCards: document.querySelectorAll('.bot-preset-card'),
+  botPreGameQuote: document.getElementById('botPreGameQuote'),
+  botQuoteSpeaker: document.getElementById('botQuoteSpeaker'),
+  botQuoteText: document.getElementById('botQuoteText'),
+  customBotDifficultyRow: document.getElementById('customBotDifficultyRow'),
+  customBotCardElo: document.getElementById('customBotCardElo'),
   botEloSlider: document.getElementById('botEloSlider'),
   botEloLabel: document.getElementById('botEloLabel'),
   setupErrorMsg: document.getElementById('setupErrorMsg'),
@@ -311,12 +354,23 @@ function bindEvents() {
     });
   });
 
+  // Bot preset cards
+  els.botPresetCards.forEach((card) => {
+    card.addEventListener('click', () => {
+      els.botPresetCards.forEach((c) => c.classList.remove('active'));
+      card.classList.add('active');
+      state.botPreset = card.dataset.bot;
+      updateBotSetupUI();
+    });
+  });
+
   // Custom bot ELO slider
   els.botEloSlider.addEventListener('input', () => {
     const elo = parseInt(els.botEloSlider.value, 10);
     state.botElo = elo;
     const title = BOT_ELO_TITLES[elo] || 'Custom';
     els.botEloLabel.textContent = `${elo} ELO — ${title}`;
+    els.customBotCardElo.textContent = `${elo} ELO`;
   });
 
   // Start action button
@@ -347,8 +401,9 @@ function bindEvents() {
   els.resignBtn.addEventListener('click', () => {
     if (!state.gameActive) return;
     const resigningColor = isOnlineMode() || isBotMode() ? state.myColor : state.chess.turn();
-    const winner = resigningColor === 'w' ? 'Black' : 'White';
-    endGame('Resignation', `${winner} wins by resignation`, '🏳️');
+    const winnerColor = resigningColor === 'w' ? 'b' : 'w';
+    const winner = winnerColor === 'w' ? 'White' : 'Black';
+    endGame('Resignation', `${winner} wins by resignation`, '🏳️', winnerColor);
     sendPeerData({ type: 'resign', color: resigningColor });
   });
 
@@ -751,10 +806,24 @@ function isBotMode() {
   return state.mode === 'bot';
 }
 
+function updateBotSetupUI() {
+  const preset = BOT_PRESETS[state.botPreset] || BOT_PRESETS.kvadromech;
+  const isCustom = state.botPreset === 'custom';
+  els.customBotDifficultyRow.classList.toggle('hidden', !isCustom);
+  if (!isCustom && preset.preQuote) {
+    els.botQuoteSpeaker.textContent = `${preset.name}:`;
+    els.botQuoteText.textContent = `“${preset.preQuote}”`;
+    els.botPreGameQuote.classList.remove('hidden');
+  } else {
+    els.botPreGameQuote.classList.add('hidden');
+  }
+}
+
 function getActiveBotInfo() {
-  const elo = state.botElo;
+  const preset = BOT_PRESETS[state.botPreset] || BOT_PRESETS.kvadromech;
+  const elo = preset.id === 'custom' ? state.botElo : preset.elo;
   return {
-    name: 'Bot',
+    ...preset,
     elo,
     title: BOT_ELO_TITLES[elo] || 'Custom'
   };
@@ -816,8 +885,9 @@ function startClockIfNeeded() {
     if (state.clocks[turn] <= 0) {
       state.clocks[turn] = 0;
       renderClocks();
-      const winner = turn === 'w' ? 'Black' : 'White';
-      endGame('Time Out', `${winner} wins on time`, '⏱️');
+      const winnerColor = turn === 'w' ? 'b' : 'w';
+      const winner = winnerColor === 'w' ? 'White' : 'Black';
+      endGame('Time Out', `${winner} wins on time`, '⏱️', winnerColor);
       sendPeerData({ type: 'timeout', loser: turn });
     }
   }, 100);
@@ -1064,20 +1134,21 @@ function checkGameOverConditions() {
   if (!state.chess.game_over()) return;
 
   if (state.chess.in_checkmate()) {
-    const winner = state.chess.turn() === 'w' ? 'Black' : 'White';
-    endGame('Checkmate!', `${winner} wins by checkmate`, '🏆');
+    const winnerColor = state.chess.turn() === 'w' ? 'b' : 'w';
+    const winner = winnerColor === 'w' ? 'White' : 'Black';
+    endGame('Checkmate!', `${winner} wins by checkmate`, '🏆', winnerColor);
   } else if (state.chess.in_stalemate()) {
-    endGame('Stalemate', 'Draw by stalemate', '🤝');
+    endGame('Stalemate', 'Draw by stalemate', '🤝', null);
   } else if (state.chess.in_threefold_repetition()) {
-    endGame('Draw', 'Draw by threefold repetition', '🤝');
+    endGame('Draw', 'Draw by threefold repetition', '🤝', null);
   } else if (state.chess.insufficient_material()) {
-    endGame('Draw', 'Draw by insufficient material', '🤝');
+    endGame('Draw', 'Draw by insufficient material', '🤝', null);
   } else if (state.chess.in_draw()) {
-    endGame('Draw', 'Draw by 50-move rule', '🤝');
+    endGame('Draw', 'Draw by 50-move rule', '🤝', null);
   }
 }
 
-function endGame(title, subtitle, icon = '🏆') {
+function endGame(title, subtitle, icon = '🏆', winnerColor = null) {
   state.gameActive = false;
   state.botThinking = false;
   state.botSessionId++;
@@ -1087,6 +1158,22 @@ function endGame(title, subtitle, icon = '🏆') {
   els.gameOverIcon.textContent = icon;
   els.gameOverTitle.textContent = title;
   els.gameOverSubtitle.textContent = subtitle;
+
+  // Show bot win/loss quote if applicable
+  if (isBotMode() && winnerColor) {
+    const bot = getActiveBotInfo();
+    const botWon = winnerColor !== state.myColor;
+    const quote = botWon ? bot.winQuote : bot.loseQuote;
+    if (quote) {
+      els.gameOverQuote.textContent = `${bot.name}: “${quote}”`;
+      els.gameOverQuote.classList.remove('hidden');
+    } else {
+      els.gameOverQuote.classList.add('hidden');
+    }
+  } else {
+    els.gameOverQuote.classList.add('hidden');
+  }
+
   els.gameOverOverlay.classList.remove('hidden');
 
   updateUI();
@@ -1120,7 +1207,7 @@ function updatePlayerBars() {
       bottomColor === state.myColor ? `You (${colorName(bottomColor)})` : `Friend (${colorName(bottomColor)})`;
   } else if (isBotMode()) {
     const bot = getActiveBotInfo();
-    const botLabel = `Bot (${bot.elo} ELO)`;
+    const botLabel = `${bot.name} (${bot.elo} ELO)`;
     els.topPlayerName.textContent =
       topColor === state.myColor ? `You (${colorName(topColor)})` : botLabel;
     els.bottomPlayerName.textContent =
@@ -1220,7 +1307,7 @@ function updateStatusCard() {
       els.statusText.textContent =
         turn === state.myColor
           ? `Your turn (${colorName(turn)})${checkSuffix}`
-          : `Bot (${bot.elo} ELO) is thinking...`;
+          : `${bot.name} (${bot.elo}) is thinking...`;
     } else {
       els.statusText.textContent = `${colorName(turn)} to move${checkSuffix}`;
     }
@@ -1230,7 +1317,7 @@ function updateStatusCard() {
     els.modeTag.textContent = '🌐 Online P2P';
   } else if (isBotMode()) {
     const bot = getActiveBotInfo();
-    els.modeTag.textContent = `🤖 vs Bot (${bot.elo} ELO)`;
+    els.modeTag.textContent = `🤖 vs ${bot.name} (${bot.elo})`;
   } else {
     els.modeTag.textContent = '📱 Local Pass & Play';
   }
