@@ -88,7 +88,7 @@ const NAMED_BOTS = {
   kvadromech: {
     id: 'kvadromech',
     name: 'Квадромеч',
-    elo: 700,
+    elo: 2500,
     avatar: 'assets/bot-kvadromech.svg',
     replicaBefore: 'Marat?',
     replicaWon: 'Eso es Revolución Francesa',
@@ -97,7 +97,7 @@ const NAMED_BOTS = {
   kandaliha: {
     id: 'kandaliha',
     name: 'Кандалиха',
-    elo: 900,
+    elo: 2800,
     avatar: 'assets/bot-kandaliha.svg',
     replicaBefore: 'Exam…',
     replicaWon: 'Hoy es el dia de las notas, jajajaja',
@@ -106,7 +106,7 @@ const NAMED_BOTS = {
   peres: {
     id: 'peres',
     name: 'Перес',
-    elo: 300,
+    elo: 1500,
     avatar: 'assets/bot-peres.svg',
     replicaBefore: 'Are you with me guys?',
     replicaWon: 'Easy peasy!',
