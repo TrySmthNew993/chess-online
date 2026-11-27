@@ -34,12 +34,12 @@ A clean, mobile- and desktop-friendly chess web app that runs **100% as a static
 4. Under **Build and deployment → Source**, select **Deploy from a branch**, choose `main` (or `master`) and `/ (root)`, then click **Save**.
 5. In ~60 seconds your chess site will be live at `https://<your-username>.github.io/<repo-name>/`!
 
-## 💻 Running Locally on Your Machine / LAN
+## 💻 Running Locally on Your Machine / LAN (Even Offline)
 
-You can open `index.html` directly, or serve the folder on your LAN so any device on your Wi-Fi can open it:
+Run the included Python LAN server (uses only Python 3 standard library):
 
 ```bash
 cd chess-online
-python3 -m http.server 8080
+python3 server.py 8080
 ```
-Then open `http://localhost:8080` (or `http://<your-local-ip>:8080` on your phone).
+Then open `http://localhost:8080` (or the printed `http://<your-local-ip>:8080` on phones/other PCs on the same Wi-Fi). Rooms work over LAN even with no internet connection.

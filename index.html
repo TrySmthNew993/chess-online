@@ -8,10 +8,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
-  <!-- Chess.js for complete legal chess rules -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
-  <!-- PeerJS for Serverless WebRTC P2P multiplayer on GitHub Pages (works across any network & LAN) -->
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <!-- Chess.js (vendored for offline LAN & fast loading) -->
+  <script src="vendor/chess.min.js"></script>
+  <!-- PeerJS (vendored) for WebRTC P2P; net.js adds relay + LAN fallbacks -->
+  <script src="vendor/peerjs.min.js"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -382,6 +382,7 @@
   </div>
 
   <script src="engine.js"></script>
+  <script src="net.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

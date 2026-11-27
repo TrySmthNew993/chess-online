@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>KnightLink Online E2E Test</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; background: #0f141c; color: #e2e8f0; padding: 16px; }
+    .frames { display: flex; gap: 8px; }
+    iframe { width: 480px; height: 640px; border: 1px solid #334155; background: #fff; }
+    pre { background: #18202c; padding: 10px; border-radius: 8px; white-space: pre-wrap; }
+    .pass { color: #4ade80; } .fail { color: #f87171; }
+  </style>
+</head>
+<body>
+  <h2>KnightLink Online E2E Test</h2>
+  <p>Opens the real app twice (host + guest), creates a room, joins by invite link, plays 1.e4 e5 and checks both boards.
+     Params: <code>?scenarios=all,p2p,relay,lan,p2p-turn</code></p>
+  <pre id="log"></pre>
+  <div class="frames" id="frames"></div>
+
+<script>
+const logEl = document.getElementById('log');
+const results = [];
+function log(msg, cls) {
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = `[${new Date().toISOString().slice(11, 19)}] ${msg}`;
+  logEl.appendChild(line);
+  console.log(msg);
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function waitFor(fn, timeoutMs, label) {
+  const t0 = performance.now();
+  while (performance.now() - t0 < timeoutMs) {
+    try {
+      const v = fn();
+      if (v) return v;
+    } catch (_) {}
+    await sleep(150);
+  }
+  throw new Error(`Timeout waiting for: ${label}`);
+}
+
+function loadFrame(src) {
+  return new Promise((resolve) => {
+    const f = document.createElement('iframe');
+    f.onload = () => resolve(f);
+    f.src = src;
+    document.getElementById('frames').appendChild(f);
+  });
+}
+
+const SCENARIOS = {
+  all:        { net: '',      extra: '' },
+  p2p:        { net: 'p2p',   extra: '' },
+  relay:      { net: 'relay', extra: '' },
+  lan:        { net: 'lan',   extra: '' },
+  'p2p-turn': { net: 'p2p',   extra: '&relayonly=1' } // forces TURN relay = proves cross-network WebRTC
+};
+
+async function runScenario(name) {
+  const cfg = SCENARIOS[name];
+  const q = `${cfg.net ? 'net=' + cfg.net : ''}${cfg.extra}`;
+  const t0 = performance.now();
+  let A, B;
+  try {
+    A = await loadFrame(`../index.html?${q}`);
+    const wa = A.contentWindow;
+    await waitFor(() => typeof wa.eval('typeof handleStartAction') === 'string', 5000, 'host app load');
+    wa.eval("switchSetupTab('online-host'); els.startActionBtn.click();");
+    const code = await waitFor(
+      () => wa.eval("state.mode==='online-host' && els.setupModal.classList.contains('hidden') && state.roomCode"),
+      20000, 'host room open');
+    log(`[${name}] host room open: ${code} (${Math.round(performance.now() - t0)}ms) ready=${wa.eval("state.net.readyTransports().join(',')")}`);
+
+    B = await loadFrame(`../index.html?${q}${q ? '&' : ''}room=${code}`);
+    const wb = B.contentWindow;
+    await waitFor(() => wb.eval("state.setupTab==='online-join' && els.joinCodeInput.value") === code, 5000, 'guest invite prefill');
+    wb.eval('els.startActionBtn.click()');
+
+    const ok = "state.connected && state.gameActive && !!state.gameId";
+    await waitFor(() => wa.eval(ok) && wb.eval(ok), 30000, 'both connected');
+    const tConn = Math.round(performance.now() - t0);
+    log(`[${name}] both connected (${tConn}ms) host via=${wa.eval("state.net.activeVia().join(',')")} guest via=${wb.eval("state.net.activeVia().join(',')")}`);
+
+    const hostWhite = wa.eval('state.myColor') === 'w';
+    const white = hostWhite ? wa : wb;
+    const black = hostWhite ? wb : wa;
+    if (white.eval('state.myColor') !== 'w' || black.eval('state.myColor') !== 'b') throw new Error('Colors not complementary');
+
+    white.eval("handleSquareClick('e2'); handleSquareClick('e4');");
+    await waitFor(() => black.eval('state.chess.history().length') === 1, 15000, 'black sees e4');
+    black.eval("handleSquareClick('e7'); handleSquareClick('e5');");
+    await waitFor(() => white.eval('state.chess.history().length') === 2, 15000, 'white sees e5');
+
+    const fa = wa.eval('state.chess.fen()');
+    const fb = wb.eval('state.chess.fen()');
+    if (fa !== fb) throw new Error(`FEN mismatch: ${fa} vs ${fb}`);
+    const via = wa.eval("state.net.activeVia().join(',')");
+    const total = Math.round(performance.now() - t0);
+    log(`[${name}] PASS — moves synced, FEN equal, via=${via}, total ${total}ms`, 'pass');
+    results.push({ name, pass: true, connectMs: tConn, totalMs: total, via });
+  } catch (err) {
+    let diag = '';
+    try { diag = ' | host: ' + A.contentWindow.eval("JSON.stringify({c:state.connected,g:state.gameId,r:state.net&&state.net.readyTransports(),err:els.setupErrorMsg.textContent})"); } catch (_) {}
+    try { diag += ' | guest: ' + B.contentWindow.eval("JSON.stringify({c:state.connected,g:state.gameId,r:state.net&&state.net.readyTransports(),err:els.setupErrorMsg.textContent})"); } catch (_) {}
+    log(`[${name}] FAIL — ${err.message}${diag}`, 'fail');
+    results.push({ name, pass: false, error: err.message + diag });
+  } finally {
+    try { A && A.contentWindow.eval('cleanupPeer()'); } catch (_) {}
+    try { B && B.contentWindow.eval('cleanupPeer()'); } catch (_) {}
+    await sleep(400);
+    if (A) A.remove();
+    if (B) B.remove();
+  }
+}
+
+async function report(payload) {
+  try {
+    await fetch('../relay/room/__e2e_report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: 'e2e', data: JSON.stringify(payload) })
+    });
+  } catch (_) {}
+}
+
+(async () => {
+  const list = (new URLSearchParams(location.search).get('scenarios') || 'all,lan,relay,p2p')
+    .split(',').map((s) => s.trim()).filter((s) => SCENARIOS[s]);
+  for (const name of list) {
+    log(`--- scenario: ${name} ---`);
+    await runScenario(name);
+  }
+  const allPass = results.every((r) => r.pass);
+  log(allPass ? 'ALL SCENARIOS PASSED' : 'SOME SCENARIOS FAILED', allPass ? 'pass' : 'fail');
+  await report({ done: true, allPass, results });
+})();
+</script>
+</body>
+</html>

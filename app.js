@@ -181,13 +181,14 @@ const state = {
   gameActive: false,
   gameOverReason: null,
 
-  // PeerJS P2P state
-  peer: null,
-  conn: null,
+  // Online room state (see net.js)
+  net: null,
   roomCode: null,
   connected: false,
-  joinTimeoutId: null,
-  hostInitSent: false
+  everConnected: false,
+  gameId: null,
+  joinHelloTimer: null,
+  joinTimeoutId: null
 };
 
 // DOM Elements
@@ -278,19 +279,10 @@ const els = {
   startActionBtn: document.getElementById('startActionBtn')
 };
 
-const PEER_PREFIX = 'knightlink-chess-v1-';
-const PEER_CONFIG = {
-  debug: 0,
-  config: {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun.cloudflare.com:3478' }
-    ],
-    iceCandidatePoolSize: 4
-  }
-};
+// Optional debug/test URL params: ?net=p2p,relay,lan  &relayonly=1
+const NET_URL_PARAMS = new URLSearchParams(window.location.search);
+const NET_TRANSPORTS = (NET_URL_PARAMS.get('net') || '').split(',').map((x) => x.trim()).filter(Boolean);
+const NET_RELAY_ONLY = NET_URL_PARAMS.get('relayonly') === '1';
 
 // Initialize App
 function init() {
@@ -494,6 +486,8 @@ function bindEvents() {
       }
       // Swap colors on rematch
       const newMyColor = state.myColor === 'w' ? 'b' : 'w';
+      const rematchId = newGameId();
+      state.gameId = rematchId;
       startNewBoardSession({
         myColor: newMyColor,
         minutes: state.timeMinutes,
@@ -501,6 +495,7 @@ function bindEvents() {
       });
       sendPeerData({
         type: 'rematch',
+        gameId: rematchId,
         hostColor: newMyColor,
         minutes: state.timeMinutes,
         increment: state.timeIncrement
@@ -647,283 +642,314 @@ function generateRoomCode() {
 }
 
 // ==========================================
-// WebRTC P2P Networking (PeerJS)
+// Online Rooms (multi-transport: P2P WebRTC + Relay + LAN server, see net.js)
 // ==========================================
-function clearJoinTimeout() {
+function newGameId() {
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+}
+
+function clearJoinTimers() {
   if (state.joinTimeoutId) {
     clearTimeout(state.joinTimeoutId);
     state.joinTimeoutId = null;
   }
+  if (state.joinHelloTimer) {
+    clearInterval(state.joinHelloTimer);
+    state.joinHelloTimer = null;
+  }
 }
 
 function cleanupPeer() {
-  clearJoinTimeout();
-  state.hostInitSent = false;
-  if (state.conn) {
-    try { state.conn.close(); } catch (_) {}
-    state.conn = null;
-  }
-  if (state.peer) {
-    try { state.peer.destroy(); } catch (_) {}
-    state.peer = null;
+  clearJoinTimers();
+  if (state.net) {
+    try { state.net.close(); } catch (_) {}
+    state.net = null;
   }
   state.connected = false;
+  state.everConnected = false;
+  state.gameId = null;
 }
 
-function initHostRoom(retryCount = 0) {
+function createNetSession(role, code) {
+  if (typeof NetSession === 'undefined') {
+    throw new Error('Networking module failed to load. Please reload the page.');
+  }
+  return new NetSession({
+    role,
+    code,
+    transports: NET_TRANSPORTS,
+    relayOnly: NET_RELAY_ONLY,
+    onMessage: handlePeerMessage,
+    onStatus: handleNetStatus
+  });
+}
+
+function resetStartButton() {
+  els.startActionBtn.disabled = false;
+  switchSetupTab(state.setupTab);
+}
+
+async function initHostRoom() {
   cleanupPeer();
   state.mode = 'online-host';
   state.roomCode = generateRoomCode();
-
   els.startActionBtn.disabled = true;
   els.startActionBtn.textContent = 'Creating Room...';
 
-  if (typeof Peer === 'undefined') {
-    els.startActionBtn.disabled = false;
-    els.startActionBtn.textContent = 'Create Room & Get Link';
-    showSetupError('PeerJS failed to load. Check your internet connection and reload.');
+  let net;
+  try {
+    net = createNetSession('host', state.roomCode);
+    state.net = net;
+    await net.start();
+  } catch (err) {
+    if (state.net === net) cleanupPeer();
+    resetStartButton();
+    showSetupError(`Could not open a room: ${err.message || err}. Check your internet connection and try again.`);
     return;
   }
+  if (state.net !== net) return; // superseded
 
-  const peerId = PEER_PREFIX + state.roomCode;
-  const peer = new Peer(peerId, PEER_CONFIG);
-  state.peer = peer;
+  resetStartButton();
+  els.setupModal.classList.add('hidden');
 
-  state.joinTimeoutId = setTimeout(() => {
-    if (state.peer === peer && !peer.open) {
-      cleanupPeer();
-      els.startActionBtn.disabled = false;
-      els.startActionBtn.textContent = 'Create Room & Get Link';
-      showSetupError('Could not reach signaling server. Please try again.');
-    }
-  }, 12000);
+  let hostColor = state.hostColorPref;
+  if (hostColor === 'random') hostColor = Math.random() < 0.5 ? 'w' : 'b';
 
-  peer.on('open', () => {
-    clearJoinTimeout();
-    els.startActionBtn.disabled = false;
-    els.startActionBtn.textContent = 'Create Room & Get Link';
-    els.setupModal.classList.add('hidden');
+  els.roomBanner.classList.remove('hidden');
+  els.displayRoomCode.textContent = state.roomCode;
+  setConnectionStatus('waiting', 'Waiting for friend...');
 
-    // Determine host piece color
-    let hostColor = state.hostColorPref;
-    if (hostColor === 'random') {
-      hostColor = Math.random() < 0.5 ? 'w' : 'b';
-    }
-
-    // Show Room Banner
-    els.roomBanner.classList.remove('hidden');
-    els.displayRoomCode.textContent = state.roomCode;
-    els.roomHintText.textContent = 'Waiting for friend to join via code or invite link...';
-    setConnectionStatus('waiting', 'Waiting for friend...');
-
-    startNewBoardSession({
-      myColor: hostColor,
-      minutes: state.timeMinutes,
-      increment: state.timeIncrement,
-      waitingForPeer: true
-    });
+  startNewBoardSession({
+    myColor: hostColor,
+    minutes: state.timeMinutes,
+    increment: state.timeIncrement,
+    waitingForPeer: true
   });
-
-  peer.on('connection', (conn) => {
-    // Only allow 1 active opponent connection
-    if (state.conn && state.conn.open) {
-      conn.close();
-      return;
-    }
-    state.conn = conn;
-    state.hostInitSent = false;
-    setupPeerConnectionHandlers(conn, true);
-  });
-
-  peer.on('disconnected', () => {
-    if (state.peer === peer && !peer.destroyed) {
-      try { peer.reconnect(); } catch (_) {}
-    }
-  });
-
-  peer.on('error', (err) => {
-    clearJoinTimeout();
-    els.startActionBtn.disabled = false;
-    els.startActionBtn.textContent = 'Create Room & Get Link';
-    if (err.type === 'unavailable-id' && retryCount < 3) {
-      initHostRoom(retryCount + 1); // Retry with new code
-    } else {
-      showSetupError(`Network error: ${err.message || err.type}`);
-    }
-  });
+  updateRoomHint();
 }
 
-function initJoinRoom(code) {
+async function initJoinRoom(code) {
   cleanupPeer();
   state.mode = 'online-join';
   state.roomCode = code;
-
   els.startActionBtn.disabled = true;
   els.startActionBtn.textContent = 'Connecting...';
 
-  if (typeof Peer === 'undefined') {
-    els.startActionBtn.disabled = false;
-    els.startActionBtn.textContent = 'Join Friend’s Room';
-    showSetupError('PeerJS failed to load. Check your internet connection and reload.');
+  let net;
+  try {
+    net = createNetSession('guest', code);
+    state.net = net;
+    await net.start();
+  } catch (err) {
+    if (state.net === net) cleanupPeer();
+    resetStartButton();
+    showSetupError(`Could not connect: ${err.message || err}. Check your internet connection and try again.`);
     return;
   }
+  if (state.net !== net) return;
 
-  const peer = new Peer(PEER_CONFIG);
-  state.peer = peer;
+  els.startActionBtn.textContent = 'Looking for room...';
+
+  // Keep knocking until the host answers with init-game
+  const knock = () => sendPeerData({ type: 'join-hello' });
+  knock();
+  state.joinHelloTimer = setInterval(knock, 1500);
 
   state.joinTimeoutId = setTimeout(() => {
-    if (state.peer === peer && !state.connected) {
+    if (state.net === net && !state.gameId) {
       cleanupPeer();
-      els.startActionBtn.disabled = false;
-      els.startActionBtn.textContent = 'Join Friend’s Room';
-      showSetupError(`Connection to room "${code}" timed out. Make sure your friend has the room open.`);
+      state.mode = 'local';
+      resetStartButton();
+      showSetupError(`Room "${code}" was not found or is not responding. Make sure your friend still has the room open and the code is correct.`);
     }
-  }, 14000);
-
-  peer.on('open', () => {
-    const conn = peer.connect(PEER_PREFIX + code);
-    state.conn = conn;
-    setupPeerConnectionHandlers(conn, false);
-  });
-
-  peer.on('error', (err) => {
-    clearJoinTimeout();
-    els.startActionBtn.disabled = false;
-    els.startActionBtn.textContent = 'Join Friend’s Room';
-    if (err.type === 'peer-unavailable') {
-      showSetupError(`Room "${code}" was not found. Ask your friend to check their Room Code.`);
-    } else {
-      showSetupError(`Could not connect to room "${code}": ${err.message || err.type}`);
-    }
-  });
+  }, 25000);
 }
 
-function sendHostInitGame(conn) {
-  if (!conn || !conn.open || state.hostInitSent) return;
-  state.hostInitSent = true;
-  state.gameActive = true;
-  conn.send({
+function hostSendInitGame() {
+  sendPeerData({
     type: 'init-game',
+    gameId: state.gameId,
     guestColor: state.myColor === 'w' ? 'b' : 'w',
     minutes: state.timeMinutes,
     increment: state.timeIncrement,
-    fen: state.chess.fen()
+    pgn: state.chess.history().length ? state.chess.pgn() : '',
+    clocks: state.clocks,
+    over: !state.gameActive && !!state.gameOverReason
   });
-  sfx.gameOver();
+}
+
+function handleNetStatus({ connected }) {
+  if (!isOnlineMode()) return;
+  const wasConnected = state.connected;
+  state.connected = connected;
+
+  if (connected) {
+    if (state.gameId || state.mode === 'online-host') {
+      setConnectionStatus('connected', 'Friend Connected');
+    }
+    if (!wasConnected && state.everConnected && state.gameId) {
+      // Recovered after a drop: resync in both directions
+      sendPeerData({ type: 'sync-request' });
+      if (state.mode === 'online-join') sendPeerData({ type: 'join-hello' });
+    }
+  } else if (wasConnected || state.everConnected) {
+    setConnectionStatus('disconnected', 'Connection lost — reconnecting...');
+  }
+
+  updateRoomHint();
   updateUI();
 }
 
-function setupPeerConnectionHandlers(conn, isHost) {
-  let opened = false;
-
-  const handleOpen = () => {
-    if (opened) return;
-    opened = true;
-    clearJoinTimeout();
-    state.connected = true;
-    els.startActionBtn.disabled = false;
-    els.startActionBtn.textContent = isHost ? 'Create Room & Get Link' : 'Join Friend’s Room';
-    els.setupModal.classList.add('hidden');
-    setConnectionStatus('connected', 'Friend Connected');
-    els.roomBanner.classList.remove('hidden');
-    els.displayRoomCode.textContent = state.roomCode;
-    els.roomHintText.textContent = 'Connected! Playing live peer-to-peer.';
-
-    if (isHost) {
-      // Wait briefly for guest's join-hello so guest's data listener is guaranteed ready
-      setTimeout(() => sendHostInitGame(conn), 250);
-    } else {
-      conn.send({ type: 'join-hello' });
-    }
-  };
-
-  conn.on('data', (data) => {
-    handlePeerMessage(data, conn);
-  });
-
-  conn.on('open', handleOpen);
-
-  conn.on('error', () => {
-    clearJoinTimeout();
-    if (!state.connected) {
-      els.startActionBtn.disabled = false;
-      els.startActionBtn.textContent = isHost ? 'Create Room & Get Link' : 'Join Friend’s Room';
-      showSetupError(`Could not connect to room "${state.roomCode}". Check the code and try again.`);
-    }
-  });
-
-  conn.on('close', () => {
-    clearJoinTimeout();
-    state.connected = false;
-    setConnectionStatus('disconnected', 'Friend Disconnected');
-    if (state.gameActive) {
-      endGame('Disconnected', 'Opponent disconnected from the room', '🔌');
-    }
-  });
-
-  if (conn.open) {
-    handleOpen();
+function updateRoomHint() {
+  if (!isOnlineMode() || !state.net) return;
+  const via = state.net.describe();
+  const ready = state.net.describe(state.net.readyTransports());
+  if (state.connected) {
+    els.roomHintText.textContent = `Connected via ${via || ready}.`;
+  } else if (state.everConnected) {
+    els.roomHintText.textContent = 'Friend connection lost. Trying to reconnect automatically...';
+  } else if (state.mode === 'online-host') {
+    els.roomHintText.textContent = `Room open (${ready}). Share the code or invite link — works on the same Wi-Fi or any other network.`;
+  } else {
+    els.roomHintText.textContent = `Joining room (${ready})...`;
   }
 }
 
-function handlePeerMessage(data, conn) {
+function loadGameFromPgn(pgn, clocks) {
+  if (!pgn) return false;
+  const ok = state.chess.load_pgn(pgn);
+  if (!ok) return false;
+  const hist = state.chess.history({ verbose: true });
+  const last = hist[hist.length - 1];
+  state.lastMove = last ? { from: last.from, to: last.to } : null;
+  state.selectedSquare = null;
+  state.legalMoves = [];
+  if (clocks && !state.unlimitedTime) state.clocks = { w: clocks.w, b: clocks.b };
+  if (hist.length >= 1 && state.gameActive && !state.unlimitedTime) startClockIfNeeded();
+  renderBoard();
+  updateUI();
+  checkGameOverConditions();
+  return true;
+}
+
+function handlePeerMessage(data) {
   if (!data || !data.type) return;
+  const sameGame = !data.gameId || !state.gameId || data.gameId === state.gameId;
 
   switch (data.type) {
     case 'join-hello': {
-      if (state.mode === 'online-host') {
-        sendHostInitGame(conn || state.conn);
+      if (state.mode !== 'online-host') break;
+      const firstJoin = !state.gameId;
+      if (firstJoin) {
+        state.gameId = newGameId();
+        state.gameActive = true;
+        state.everConnected = true;
+        sfx.gameOver();
       }
+      hostSendInitGame();
+      setConnectionStatus('connected', 'Friend Connected');
+      updateRoomHint();
+      updateUI();
       break;
     }
 
     case 'init-game': {
-      state.timeMinutes = data.minutes;
-      state.timeIncrement = data.increment;
-      state.unlimitedTime = data.minutes === 0;
-      startNewBoardSession({
-        myColor: data.guestColor,
-        minutes: data.minutes,
-        increment: data.increment,
-        waitingForPeer: false
-      });
-      sfx.gameOver();
+      if (state.mode !== 'online-join') break;
+      const firstInit = !state.gameId;
+      clearJoinTimers();
+      if (data.gameId !== state.gameId) {
+        state.gameId = data.gameId;
+        state.timeMinutes = data.minutes;
+        state.timeIncrement = data.increment;
+        state.unlimitedTime = data.minutes === 0;
+        startNewBoardSession({
+          myColor: data.guestColor,
+          minutes: data.minutes,
+          increment: data.increment,
+          waitingForPeer: false
+        });
+        if (data.pgn) loadGameFromPgn(data.pgn, data.clocks);
+      } else if (data.pgn) {
+        // Reconnect: adopt host's position if it is ahead of ours
+        const tmp = new Chess();
+        if (tmp.load_pgn(data.pgn) && tmp.history().length > state.chess.history().length) {
+          loadGameFromPgn(data.pgn, data.clocks);
+        }
+      }
+      state.everConnected = true;
+      resetStartButton();
+      els.setupModal.classList.add('hidden');
+      els.roomBanner.classList.remove('hidden');
+      els.displayRoomCode.textContent = state.roomCode;
+      setConnectionStatus('connected', 'Friend Connected');
+      if (firstInit) sfx.gameOver();
+      updateRoomHint();
+      updateUI();
       break;
     }
 
     case 'move': {
+      if (!sameGame || !state.gameId) break;
+      const len = state.chess.history().length;
+      const ply = typeof data.ply === 'number' ? data.ply : len + 1;
+      if (ply <= len) break; // duplicate / already applied
+      if (ply > len + 1) {
+        sendPeerData({ type: 'sync-request' });
+        break;
+      }
       applyMoveOnBoard(data.from, data.to, data.promotion, false);
       if (data.clocks && !state.unlimitedTime) {
-        state.clocks = data.clocks;
+        state.clocks = { w: data.clocks.w, b: data.clocks.b };
         renderClocks();
       }
       break;
     }
 
+    case 'sync-request': {
+      if (!sameGame || !state.gameId) break;
+      sendPeerData({ type: 'sync', pgn: state.chess.pgn(), clocks: state.clocks });
+      break;
+    }
+
+    case 'sync': {
+      if (!sameGame || !state.gameId || !data.pgn) break;
+      const tmp = new Chess();
+      if (tmp.load_pgn(data.pgn) && tmp.history().length > state.chess.history().length) {
+        loadGameFromPgn(data.pgn, data.clocks);
+      }
+      break;
+    }
+
     case 'resign': {
+      if (!sameGame || !state.gameActive) break;
       const winner = data.color === 'w' ? 'Black' : 'White';
       endGame('Resignation', `${winner} wins by resignation`, '🏆');
       break;
     }
 
     case 'draw-offer': {
+      if (!sameGame || !state.gameActive) break;
       els.drawOfferBanner.classList.remove('hidden');
       break;
     }
 
     case 'draw-accept': {
+      if (!sameGame || !state.gameActive) break;
       els.drawOfferBanner.classList.add('hidden');
       endGame('Draw Agreed', 'Game drawn by mutual agreement', '🤝');
       break;
     }
 
     case 'draw-decline': {
+      if (!sameGame) break;
       flashButtonText(els.offerDrawBtn, 'Declined');
       break;
     }
 
     case 'rematch': {
+      if (data.gameId && data.gameId === state.gameId) break; // already in this rematch
       const myNewColor = data.hostColor === 'w' ? 'b' : 'w';
+      state.gameId = data.gameId || newGameId();
       startNewBoardSession({
         myColor: myNewColor,
         minutes: data.minutes,
@@ -934,17 +960,30 @@ function handlePeerMessage(data, conn) {
     }
 
     case 'timeout': {
+      if (!sameGame || !state.gameActive) break;
       const winner = data.loser === 'w' ? 'Black' : 'White';
       endGame('Time Out', `${winner} wins on time`, '⏱️');
+      break;
+    }
+
+    case 'bye': {
+      state.connected = false;
+      setConnectionStatus('disconnected', 'Friend left the room');
+      if (state.gameActive) {
+        endGame('Disconnected', 'Opponent left the room', '🔌');
+      } else {
+        updateUI();
+      }
       break;
     }
   }
 }
 
 function sendPeerData(payload) {
-  if (state.conn && state.conn.open) {
-    state.conn.send(payload);
-  }
+  if (!state.net || !isOnlineMode()) return;
+  const msg = Object.assign({}, payload);
+  if (state.gameId && !msg.gameId) msg.gameId = state.gameId;
+  state.net.send(msg);
 }
 
 function setConnectionStatus(statusType, text) {
@@ -953,6 +992,10 @@ function setConnectionStatus(statusType, text) {
   if (statusType === 'disconnected') els.connectionPill.classList.add('disconnected');
   els.connStatusText.textContent = text;
 }
+
+window.addEventListener('pagehide', () => {
+  if (state.net) state.net.close();
+});
 
 function isOnlineMode() {
   return state.mode === 'online-host' || state.mode === 'online-join';
@@ -1312,6 +1355,7 @@ function applyMoveOnBoard(from, to, promotion = 'q', isLocalAction = true) {
       from,
       to,
       promotion,
+      ply: state.chess.history().length,
       clocks: state.clocks
     });
   }
@@ -1495,7 +1539,9 @@ function updateStatusCard() {
   if (!state.gameActive && state.gameOverReason) {
     els.statusText.textContent = state.gameOverReason;
   } else if (isOnlineMode() && !state.connected) {
-    els.statusText.textContent = 'Waiting for friend to join...';
+    els.statusText.textContent = state.everConnected
+      ? 'Connection lost — reconnecting...'
+      : 'Waiting for friend to join...';
   } else {
     const checkSuffix = state.chess.in_check() ? ' (Check!)' : '';
     if (isOnlineMode()) {
@@ -1515,7 +1561,9 @@ function updateStatusCard() {
   }
 
   if (isOnlineMode()) {
-    els.modeTag.textContent = '🌐 Online P2P';
+    els.modeTag.textContent = state.connected && state.net
+      ? `🌐 Online · ${state.net.describe()}`
+      : '🌐 Online';
     els.engineTag.classList.add('hidden');
   } else if (isBotMode()) {
     const bot = getActiveBotInfo();
