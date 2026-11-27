@@ -208,6 +208,7 @@ const els = {
   statusText: document.getElementById('statusText'),
   modeTag: document.getElementById('modeTag'),
   timerTag: document.getElementById('timerTag'),
+  engineTag: document.getElementById('engineTag'),
   movesList: document.getElementById('movesList'),
 
   roomBanner: document.getElementById('roomBanner'),
@@ -284,6 +285,11 @@ function init() {
   checkUrlRoomInvite();
   renderBoard();
   updateUI();
+  if (window.StockfishEngine) {
+    window.StockfishEngine.ensureInitialized().then(() => {
+      if (isBotMode()) updateStatusCard();
+    });
+  }
 }
 
 function checkUrlRoomInvite() {
@@ -855,6 +861,9 @@ function startNewBoardSession({ myColor = 'w', minutes = 10, increment = 0, wait
   stopClock();
   state.botSessionId++;
   state.botThinking = false;
+  if (window.StockfishEngine) {
+    window.StockfishEngine.newGame();
+  }
   state.chess.reset();
   state.myColor = myColor;
   state.flipped = myColor === 'b';
@@ -1188,6 +1197,9 @@ function endGame(title, subtitle, icon = '🏆', botResult = null) {
   state.gameActive = false;
   state.botThinking = false;
   state.botSessionId++;
+  if (window.StockfishEngine) {
+    window.StockfishEngine.stop();
+  }
   state.gameOverReason = subtitle;
   stopClock();
 
@@ -1354,11 +1366,17 @@ function updateStatusCard() {
 
   if (isOnlineMode()) {
     els.modeTag.textContent = '🌐 Online P2P';
+    els.engineTag.classList.add('hidden');
   } else if (isBotMode()) {
     const bot = getActiveBotInfo();
     els.modeTag.textContent = `🤖 vs ${bot.name} (${bot.elo} ELO)`;
+    els.engineTag.textContent = window.StockfishEngine && window.StockfishEngine.isReady()
+      ? '⚡ Stockfish 19'
+      : '⚙️ Built-in Engine';
+    els.engineTag.classList.remove('hidden');
   } else {
     els.modeTag.textContent = '📱 Local Pass & Play';
+    els.engineTag.classList.add('hidden');
   }
   els.timerTag.textContent = state.unlimitedTime
     ? '∞ Unlimited'
@@ -1395,24 +1413,32 @@ function colorName(c) {
 }
 
 // ==========================================
-// Chess Bot Runner (Delegates to ChessBotEngine in engine.js)
+// Chess Bot Runner (Stockfish 19 WASM + Built-in JS Fallback)
 // ==========================================
 function getBotThinkDelayMs(elo) {
-  // Low ELOs need a brief artificial delay since depth 1-2 finishes in <10ms;
-  // High ELOs already spend 1-2.8s searching in ChessBotEngine.
+  // Low ELOs need a short human-like delay; higher ELOs spend 0.5-1.8s in Stockfish search
   const t = Math.max(0, Math.min(1, (elo - 200) / 3000));
-  let delayMs = elo <= 1200
-    ? 600 + Math.round(t * 1400) + Math.floor(Math.random() * 500)
-    : 220 + Math.floor(Math.random() * 250);
+  let delayMs = elo < 1320
+    ? 450 + Math.round(t * 1100) + Math.floor(Math.random() * 400)
+    : 150 + Math.floor(Math.random() * 200);
 
   if (!state.unlimitedTime) {
     const botColor = state.myColor === 'w' ? 'b' : 'w';
     const remainingMs = state.clocks[botColor];
     if (remainingMs < 20000) {
-      delayMs = Math.min(delayMs, Math.max(150, Math.floor(remainingMs * 0.2)));
+      delayMs = Math.min(delayMs, Math.max(100, Math.floor(remainingMs * 0.15)));
     }
   }
   return delayMs;
+}
+
+function getBotClockBudgetMs() {
+  if (state.unlimitedTime) return null;
+  const botColor = state.myColor === 'w' ? 'b' : 'w';
+  const remainingMs = state.clocks[botColor];
+  if (remainingMs < 8000) return 200;
+  if (remainingMs < 20000) return 450;
+  return null;
 }
 
 function scheduleBotMove() {
@@ -1422,16 +1448,26 @@ function scheduleBotMove() {
 
   const bot = getActiveBotInfo();
   const delayMs = getBotThinkDelayMs(bot.elo);
+  const fenSnapshot = state.chess.fen();
+  const clockCapMs = getBotClockBudgetMs();
 
-  setTimeout(() => {
+  setTimeout(async () => {
     if (sessionId !== state.botSessionId || !state.gameActive || state.chess.game_over()) {
       state.botThinking = false;
       return;
     }
 
     let chosenMove = null;
-    if (window.ChessBotEngine) {
-      chosenMove = window.ChessBotEngine.findBestMove(state.chess.fen(), bot.elo);
+    if (window.StockfishEngine) {
+      const res = await window.StockfishEngine.findBestMoveAsync(fenSnapshot, bot.elo, clockCapMs);
+      chosenMove = res ? res.move : null;
+    } else if (window.ChessBotEngine) {
+      chosenMove = window.ChessBotEngine.findBestMove(fenSnapshot, bot.elo);
+    }
+
+    if (sessionId !== state.botSessionId || !state.gameActive || state.chess.game_over()) {
+      state.botThinking = false;
+      return;
     }
 
     // Safety fallback against chess.js legal moves

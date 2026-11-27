@@ -1130,5 +1130,263 @@
     };
   }
 
+  // ==========================================
+  // Stockfish 19 WASM Web Worker Bridge
+  // ==========================================
+  const StockfishEngine = (() => {
+    const WORKER_URL = 'vendor/stockfish/stockfish-19-lite-single.js';
+    let worker = null;
+    let initPromise = null;
+    let ready = false;
+    let failed = false;
+    let uciEloMin = 1320;
+    let uciEloMax = 3190;
+
+    let currentLineHandler = null;
+    let searchQueue = Promise.resolve();
+
+    function send(cmd) {
+      if (worker) worker.postMessage(cmd);
+    }
+
+    function ensureInitialized() {
+      if (ready) return Promise.resolve(true);
+      if (failed) return Promise.resolve(false);
+      if (initPromise) return initPromise;
+
+      if (typeof Worker === 'undefined' || (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:')) {
+        failed = true;
+        return Promise.resolve(false);
+      }
+
+      initPromise = new Promise((resolve) => {
+        let settled = false;
+        const timeoutId = setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            failed = true;
+            resolve(false);
+          }
+        }, 12000);
+
+        try {
+          worker = new Worker(WORKER_URL);
+        } catch (err) {
+          clearTimeout(timeoutId);
+          failed = true;
+          settled = true;
+          resolve(false);
+          return;
+        }
+
+        let gotUciOk = false;
+
+        worker.onerror = () => {
+          if (!settled) {
+            clearTimeout(timeoutId);
+            failed = true;
+            settled = true;
+            resolve(false);
+          }
+        };
+
+        worker.onmessage = (e) => {
+          const line = typeof e.data === 'string' ? e.data.trim() : '';
+          if (!line) return;
+
+          if (!ready) {
+            if (line.startsWith('option name UCI_Elo')) {
+              const minM = line.match(/\bmin\s+(\d+)/);
+              const maxM = line.match(/\bmax\s+(\d+)/);
+              if (minM) uciEloMin = parseInt(minM[1], 10);
+              if (maxM) uciEloMax = parseInt(maxM[1], 10);
+            } else if (line === 'uciok' && !gotUciOk) {
+              gotUciOk = true;
+              send('isready');
+            } else if (line === 'readyok' && gotUciOk) {
+              ready = true;
+              clearTimeout(timeoutId);
+              if (!settled) {
+                settled = true;
+                resolve(true);
+              }
+            }
+            return;
+          }
+
+          if (currentLineHandler) {
+            currentLineHandler(line);
+          }
+        };
+
+        send('uci');
+      });
+
+      return initPromise;
+    }
+
+    function parseUciMove(str) {
+      if (!str || str === '(none)' || str.length < 4) return null;
+      return {
+        from: str.slice(0, 2),
+        to: str.slice(2, 4),
+        promotion: str[4] || 'q'
+      };
+    }
+
+    function pickMultiPvMove(pvMap, elo) {
+      const candidates = Object.values(pvMap);
+      if (candidates.length === 0) return null;
+
+      // Sort by best score first
+      candidates.sort((a, b) => b.scoreCp - a.scoreCp);
+
+      if (elo <= 350 && candidates.length > 1 && Math.random() < 0.28) {
+        const randPick = candidates[Math.floor(Math.random() * candidates.length)];
+        return parseUciMove(randPick.move);
+      }
+
+      let noiseCp = 25;
+      if (elo <= 350) noiseCp = 360;
+      else if (elo <= 550) noiseCp = 230;
+      else if (elo <= 750) noiseCp = 145;
+      else if (elo <= 950) noiseCp = 85;
+      else if (elo <= 1150) noiseCp = 48;
+      else noiseCp = 22;
+
+      const noisy = candidates.map((c) => ({
+        move: c.move,
+        score: c.scoreCp + (Math.random() * 2 - 1) * noiseCp
+      }));
+      noisy.sort((a, b) => b.score - a.score);
+      return parseUciMove(noisy[0].move);
+    }
+
+    function runSearch(fen, elo, timeBudgetCapMs) {
+      return new Promise((resolve) => {
+        const isLowElo = elo < uciEloMin;
+        const pvMap = {};
+        let phase = 'wait_ready';
+        let resolved = false;
+
+        const finish = (moveObj) => {
+          if (resolved) return;
+          resolved = true;
+          currentLineHandler = null;
+          resolve(moveObj);
+        };
+
+        const safetyTimer = setTimeout(() => {
+          send('stop');
+          if (isLowElo) {
+            finish(pickMultiPvMove(pvMap, elo));
+          } else {
+            finish(null);
+          }
+        }, 5000);
+
+        currentLineHandler = (line) => {
+          if (phase === 'wait_ready') {
+            if (line === 'readyok') {
+              phase = 'searching';
+              send(`position fen ${fen}`);
+              if (isLowElo) {
+                const cap = timeBudgetCapMs ? Math.min(350, timeBudgetCapMs) : 350;
+                send(`go depth 5 movetime ${cap}`);
+              } else {
+                const t = Math.max(0, Math.min(1, (elo - uciEloMin) / Math.max(1, 3200 - uciEloMin)));
+                const baseMoveTime = elo >= 3200 ? 1800 : Math.round(500 + t * 1050);
+                const moveTime = timeBudgetCapMs ? Math.min(baseMoveTime, timeBudgetCapMs) : baseMoveTime;
+                send(`go movetime ${Math.max(120, moveTime)}`);
+              }
+            }
+            return;
+          }
+
+          if (phase === 'searching') {
+            if (isLowElo && line.startsWith('info ') && line.includes(' pv ')) {
+              const depthM = line.match(/\bdepth\s+(\d+)/);
+              const mpvM = line.match(/\bmultipv\s+(\d+)/);
+              const scoreM = line.match(/\bscore\s+(cp|mate)\s+(-?\d+)/);
+              const pvM = line.match(/\bpv\s+([a-h][1-8][a-h][1-8][nbrq]?)/);
+              if (scoreM && pvM) {
+                const depth = depthM ? parseInt(depthM[1], 10) : 1;
+                const mpv = mpvM ? parseInt(mpvM[1], 10) : 1;
+                const val = parseInt(scoreM[2], 10);
+                const scoreCp = scoreM[1] === 'mate'
+                  ? (val > 0 ? 30000 - val * 100 : -30000 - val * 100)
+                  : val;
+                if (!pvMap[mpv] || depth >= pvMap[mpv].depth) {
+                  pvMap[mpv] = { depth, scoreCp, move: pvM[1] };
+                }
+              }
+            } else if (line.startsWith('bestmove ')) {
+              clearTimeout(safetyTimer);
+              const bestStr = line.split(/\s+/)[1];
+              if (isLowElo && Object.keys(pvMap).length > 0) {
+                finish(pickMultiPvMove(pvMap, elo));
+              } else {
+                finish(parseUciMove(bestStr));
+              }
+            }
+          }
+        };
+
+        send('stop');
+        if (isLowElo) {
+          send('setoption name UCI_LimitStrength value false');
+          send('setoption name Skill Level value 0');
+          send('setoption name MultiPV value 12');
+        } else if (elo >= 3200) {
+          send('setoption name MultiPV value 1');
+          send('setoption name UCI_LimitStrength value false');
+          send('setoption name Skill Level value 20');
+        } else {
+          const clampedElo = Math.min(uciEloMax, Math.max(uciEloMin, elo));
+          send('setoption name MultiPV value 1');
+          send('setoption name UCI_LimitStrength value true');
+          send(`setoption name UCI_Elo value ${clampedElo}`);
+        }
+        send('isready');
+      });
+    }
+
+    function findBestMoveAsync(fen, elo, timeBudgetCapMs) {
+      const task = searchQueue.then(async () => {
+        const ok = await ensureInitialized();
+        if (!ok) {
+          return { move: findBestMove(fen, elo), engine: 'js' };
+        }
+        const sfMove = await runSearch(fen, elo, timeBudgetCapMs);
+        if (!sfMove) {
+          return { move: findBestMove(fen, elo), engine: 'js' };
+        }
+        return { move: sfMove, engine: 'stockfish' };
+      });
+      searchQueue = task.catch(() => {});
+      return task;
+    }
+
+    function newGame() {
+      if (ready) {
+        send('stop');
+        send('ucinewgame');
+      } else {
+        ensureInitialized();
+      }
+    }
+
+    function stop() {
+      if (ready) send('stop');
+    }
+
+    function isReady() {
+      return ready;
+    }
+
+    return { ensureInitialized, findBestMoveAsync, newGame, stop, isReady };
+  })();
+
   global.ChessBotEngine = { findBestMove };
+  global.StockfishEngine = StockfishEngine;
 })(window);
