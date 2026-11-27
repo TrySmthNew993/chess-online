@@ -185,7 +185,9 @@ const state = {
   peer: null,
   conn: null,
   roomCode: null,
-  connected: false
+  connected: false,
+  joinTimeoutId: null,
+  hostInitSent: false
 };
 
 // DOM Elements
@@ -277,6 +279,18 @@ const els = {
 };
 
 const PEER_PREFIX = 'knightlink-chess-v1-';
+const PEER_CONFIG = {
+  debug: 0,
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' }
+    ],
+    iceCandidatePoolSize: 4
+  }
+};
 
 // Initialize App
 function init() {
@@ -292,14 +306,44 @@ function init() {
   }
 }
 
+function extractRoomCode(raw) {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  const match = trimmed.match(/[?&]room=([A-Za-z0-9_-]+)/i);
+  const candidate = match ? match[1] : trimmed;
+  return candidate.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+}
+
+function copyToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+  }
+  fallbackCopy(text);
+  return Promise.resolve();
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (_) {}
+  document.body.removeChild(ta);
+}
+
 function checkUrlRoomInvite() {
   const params = new URLSearchParams(window.location.search);
   const invitedRoom = params.get('room');
   if (invitedRoom) {
-    const cleanCode = invitedRoom.trim().toUpperCase();
-    switchSetupTab('online-join');
-    els.joinCodeInput.value = cleanCode;
-    els.setupModal.classList.remove('hidden');
+    const cleanCode = extractRoomCode(invitedRoom);
+    if (cleanCode) {
+      switchSetupTab('online-join');
+      els.joinCodeInput.value = cleanCode;
+      els.setupModal.classList.remove('hidden');
+    }
   }
 }
 
@@ -382,10 +426,17 @@ function bindEvents() {
   // Start action button
   els.startActionBtn.addEventListener('click', handleStartAction);
 
+  els.joinCodeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleStartAction();
+    }
+  });
+
   // Copy Room Code & Invite Link
   els.copyCodeBtn.addEventListener('click', () => {
     if (!state.roomCode) return;
-    navigator.clipboard.writeText(state.roomCode);
+    copyToClipboard(state.roomCode);
     flashButtonText(els.copyCodeBtn, 'Copied!');
   });
 
@@ -393,13 +444,13 @@ function bindEvents() {
     if (!state.roomCode) return;
     const url = new URL(window.location.href);
     url.searchParams.set('room', state.roomCode);
-    navigator.clipboard.writeText(url.toString());
+    copyToClipboard(url.toString());
     flashButtonText(els.copyLinkBtn, 'Link Copied!');
   });
 
   els.copyPgnBtn.addEventListener('click', () => {
     const pgn = state.chess.pgn() || 'No moves played';
-    navigator.clipboard.writeText(pgn);
+    copyToClipboard(pgn);
     flashButtonText(els.copyPgnBtn, 'Copied!');
   });
 
@@ -436,6 +487,11 @@ function bindEvents() {
 
   els.rematchBtn.addEventListener('click', () => {
     if (isOnlineMode()) {
+      if (!state.connected) {
+        els.gameOverOverlay.classList.add('hidden');
+        els.setupModal.classList.remove('hidden');
+        return;
+      }
       // Swap colors on rematch
       const newMyColor = state.myColor === 'w' ? 'b' : 'w';
       startNewBoardSession({
@@ -488,6 +544,7 @@ function switchSetupTab(tabMode) {
     t.classList.toggle('active', t.dataset.mode === tabMode);
   });
   els.setupErrorMsg.classList.add('hidden');
+  els.startActionBtn.disabled = false;
 
   if (tabMode === 'online-host') {
     els.botSelectSection.classList.add('hidden');
@@ -565,9 +622,10 @@ function handleStartAction() {
   } else if (state.setupTab === 'online-host') {
     initHostRoom();
   } else if (state.setupTab === 'online-join') {
-    const code = els.joinCodeInput.value.trim().toUpperCase();
+    const code = extractRoomCode(els.joinCodeInput.value);
+    els.joinCodeInput.value = code;
     if (!code || code.length < 4) {
-      showSetupError('Please enter a valid room code from your friend.');
+      showSetupError('Please enter a valid room code or invite link from your friend.');
       return;
     }
     initJoinRoom(code);
@@ -591,7 +649,16 @@ function generateRoomCode() {
 // ==========================================
 // WebRTC P2P Networking (PeerJS)
 // ==========================================
+function clearJoinTimeout() {
+  if (state.joinTimeoutId) {
+    clearTimeout(state.joinTimeoutId);
+    state.joinTimeoutId = null;
+  }
+}
+
 function cleanupPeer() {
+  clearJoinTimeout();
+  state.hostInitSent = false;
   if (state.conn) {
     try { state.conn.close(); } catch (_) {}
     state.conn = null;
@@ -603,7 +670,7 @@ function cleanupPeer() {
   state.connected = false;
 }
 
-function initHostRoom() {
+function initHostRoom(retryCount = 0) {
   cleanupPeer();
   state.mode = 'online-host';
   state.roomCode = generateRoomCode();
@@ -611,11 +678,28 @@ function initHostRoom() {
   els.startActionBtn.disabled = true;
   els.startActionBtn.textContent = 'Creating Room...';
 
+  if (typeof Peer === 'undefined') {
+    els.startActionBtn.disabled = false;
+    els.startActionBtn.textContent = 'Create Room & Get Link';
+    showSetupError('PeerJS failed to load. Check your internet connection and reload.');
+    return;
+  }
+
   const peerId = PEER_PREFIX + state.roomCode;
-  const peer = new Peer(peerId);
+  const peer = new Peer(peerId, PEER_CONFIG);
   state.peer = peer;
 
+  state.joinTimeoutId = setTimeout(() => {
+    if (state.peer === peer && !peer.open) {
+      cleanupPeer();
+      els.startActionBtn.disabled = false;
+      els.startActionBtn.textContent = 'Create Room & Get Link';
+      showSetupError('Could not reach signaling server. Please try again.');
+    }
+  }, 12000);
+
   peer.on('open', () => {
+    clearJoinTimeout();
     els.startActionBtn.disabled = false;
     els.startActionBtn.textContent = 'Create Room & Get Link';
     els.setupModal.classList.add('hidden');
@@ -647,14 +731,22 @@ function initHostRoom() {
       return;
     }
     state.conn = conn;
+    state.hostInitSent = false;
     setupPeerConnectionHandlers(conn, true);
   });
 
+  peer.on('disconnected', () => {
+    if (state.peer === peer && !peer.destroyed) {
+      try { peer.reconnect(); } catch (_) {}
+    }
+  });
+
   peer.on('error', (err) => {
+    clearJoinTimeout();
     els.startActionBtn.disabled = false;
     els.startActionBtn.textContent = 'Create Room & Get Link';
-    if (err.type === 'unavailable-id') {
-      initHostRoom(); // Retry with new code
+    if (err.type === 'unavailable-id' && retryCount < 3) {
+      initHostRoom(retryCount + 1); // Retry with new code
     } else {
       showSetupError(`Network error: ${err.message || err.type}`);
     }
@@ -669,26 +761,68 @@ function initJoinRoom(code) {
   els.startActionBtn.disabled = true;
   els.startActionBtn.textContent = 'Connecting...';
 
-  const peer = new Peer();
+  if (typeof Peer === 'undefined') {
+    els.startActionBtn.disabled = false;
+    els.startActionBtn.textContent = 'Join Friend’s Room';
+    showSetupError('PeerJS failed to load. Check your internet connection and reload.');
+    return;
+  }
+
+  const peer = new Peer(PEER_CONFIG);
   state.peer = peer;
 
+  state.joinTimeoutId = setTimeout(() => {
+    if (state.peer === peer && !state.connected) {
+      cleanupPeer();
+      els.startActionBtn.disabled = false;
+      els.startActionBtn.textContent = 'Join Friend’s Room';
+      showSetupError(`Connection to room "${code}" timed out. Make sure your friend has the room open.`);
+    }
+  }, 14000);
+
   peer.on('open', () => {
-    const conn = peer.connect(PEER_PREFIX + code, { reliable: true });
+    const conn = peer.connect(PEER_PREFIX + code);
     state.conn = conn;
     setupPeerConnectionHandlers(conn, false);
   });
 
   peer.on('error', (err) => {
+    clearJoinTimeout();
     els.startActionBtn.disabled = false;
     els.startActionBtn.textContent = 'Join Friend’s Room';
-    showSetupError(`Could not connect to room "${code}". Check the code and try again.`);
+    if (err.type === 'peer-unavailable') {
+      showSetupError(`Room "${code}" was not found. Ask your friend to check their Room Code.`);
+    } else {
+      showSetupError(`Could not connect to room "${code}": ${err.message || err.type}`);
+    }
   });
 }
 
+function sendHostInitGame(conn) {
+  if (!conn || !conn.open || state.hostInitSent) return;
+  state.hostInitSent = true;
+  state.gameActive = true;
+  conn.send({
+    type: 'init-game',
+    guestColor: state.myColor === 'w' ? 'b' : 'w',
+    minutes: state.timeMinutes,
+    increment: state.timeIncrement,
+    fen: state.chess.fen()
+  });
+  sfx.gameOver();
+  updateUI();
+}
+
 function setupPeerConnectionHandlers(conn, isHost) {
-  conn.on('open', () => {
+  let opened = false;
+
+  const handleOpen = () => {
+    if (opened) return;
+    opened = true;
+    clearJoinTimeout();
     state.connected = true;
     els.startActionBtn.disabled = false;
+    els.startActionBtn.textContent = isHost ? 'Create Room & Get Link' : 'Join Friend’s Room';
     els.setupModal.classList.add('hidden');
     setConnectionStatus('connected', 'Friend Connected');
     els.roomBanner.classList.remove('hidden');
@@ -696,37 +830,53 @@ function setupPeerConnectionHandlers(conn, isHost) {
     els.roomHintText.textContent = 'Connected! Playing live peer-to-peer.';
 
     if (isHost) {
-      // Send initial game config to joiner
-      state.gameActive = true;
-      conn.send({
-        type: 'init-game',
-        guestColor: state.myColor === 'w' ? 'b' : 'w',
-        minutes: state.timeMinutes,
-        increment: state.timeIncrement,
-        fen: state.chess.fen()
-      });
-      sfx.gameOver();
-      updateUI();
+      // Wait briefly for guest's join-hello so guest's data listener is guaranteed ready
+      setTimeout(() => sendHostInitGame(conn), 250);
+    } else {
+      conn.send({ type: 'join-hello' });
+    }
+  };
+
+  conn.on('data', (data) => {
+    handlePeerMessage(data, conn);
+  });
+
+  conn.on('open', handleOpen);
+
+  conn.on('error', () => {
+    clearJoinTimeout();
+    if (!state.connected) {
+      els.startActionBtn.disabled = false;
+      els.startActionBtn.textContent = isHost ? 'Create Room & Get Link' : 'Join Friend’s Room';
+      showSetupError(`Could not connect to room "${state.roomCode}". Check the code and try again.`);
     }
   });
 
-  conn.on('data', (data) => {
-    handlePeerMessage(data);
-  });
-
   conn.on('close', () => {
+    clearJoinTimeout();
     state.connected = false;
     setConnectionStatus('disconnected', 'Friend Disconnected');
     if (state.gameActive) {
       endGame('Disconnected', 'Opponent disconnected from the room', '🔌');
     }
   });
+
+  if (conn.open) {
+    handleOpen();
+  }
 }
 
-function handlePeerMessage(data) {
+function handlePeerMessage(data, conn) {
   if (!data || !data.type) return;
 
   switch (data.type) {
+    case 'join-hello': {
+      if (state.mode === 'online-host') {
+        sendHostInitGame(conn || state.conn);
+      }
+      break;
+    }
+
     case 'init-game': {
       state.timeMinutes = data.minutes;
       state.timeIncrement = data.increment;
